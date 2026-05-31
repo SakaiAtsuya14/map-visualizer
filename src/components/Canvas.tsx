@@ -24,6 +24,7 @@ interface Props {
   iouMatrix: Map<string, Map<string, number>>;
   selectedBoxId: string | null;
   onSelectBox: (id: string | null) => void;
+  onModeChange: (mode: AppMode) => void;
   onAddBox: (geom: { x: number; y: number; width: number; height: number; type: 'gt' | 'predict' }) => void;
   onUpdateBox: (id: string, updates: Partial<BoundingBox>) => void;
   onDeleteBox: (id: string) => void;
@@ -37,7 +38,7 @@ interface DrawState {
 
 export default function Canvas({
   width, height, gtBoxes, predictBoxes, mode, bgColor, bgImage,
-  iouMatrix, selectedBoxId, onSelectBox, onAddBox, onUpdateBox, onDeleteBox, classes, labelDisplay,
+  iouMatrix, selectedBoxId, onSelectBox, onModeChange, onAddBox, onUpdateBox, onDeleteBox, classes, labelDisplay,
 }: Props) {
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
@@ -47,9 +48,6 @@ export default function Canvas({
   const [bgImageEl, setBgImageEl] = useState<HTMLImageElement | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [shiftPressed, setShiftPressed] = useState(false);
-  const [rightDragBox, setRightDragBox] = useState<{
-    id: string; startCanvasX: number; startCanvasY: number; startBoxX: number; startBoxY: number;
-  } | null>(null);
 
   const isDrawMode = mode === 'gt-add' || mode === 'predict-add';
 
@@ -133,15 +131,15 @@ export default function Canvas({
       panLastPos.current = { x: e.evt.clientX, y: e.evt.clientY };
       return;
     }
-    // Right click → move box (draw mode) or pan
+    // Right click → switch to select mode if clicking on a box, else pan
     if (e.evt.button === 2) {
       e.evt.preventDefault();
       if (isDrawMode) {
         const targetId = (e.target as Konva.Node).id();
         const box = [...gtBoxes, ...predictBoxes].find(b => b.id === targetId);
         if (box) {
-          const p = getCanvasPos();
-          setRightDragBox({ id: box.id, startCanvasX: p.x, startCanvasY: p.y, startBoxX: box.x, startBoxY: box.y });
+          onSelectBox(box.id);
+          onModeChange('select');
           return;
         }
       }
@@ -166,22 +164,13 @@ export default function Canvas({
       stage.batchDraw();
       return;
     }
-    if (rightDragBox) {
-      const p = getCanvasPos();
-      onUpdateBox(rightDragBox.id, {
-        x: rightDragBox.startBoxX + (p.x - rightDragBox.startCanvasX),
-        y: rightDragBox.startBoxY + (p.y - rightDragBox.startCanvasY),
-      });
-      return;
-    }
     if (!drawState || !isDrawMode) return;
     const p = getCanvasPos();
     setDrawState(prev => prev ? { ...prev, currentX: p.x, currentY: p.y } : null);
-  }, [isPanning, rightDragBox, drawState, isDrawMode, getCanvasPos, onUpdateBox]);
+  }, [isPanning, drawState, isDrawMode, getCanvasPos]);
 
   const handleMouseUp = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
-    if (e.evt.button === 1) { setIsPanning(false); return; }
-    if (e.evt.button === 2) { setIsPanning(false); setRightDragBox(null); return; }
+    if (e.evt.button === 1 || e.evt.button === 2) { setIsPanning(false); return; }
     if (!drawState || !isDrawMode) return;
     const x = Math.min(drawState.startX, drawState.currentX);
     const y = Math.min(drawState.startY, drawState.currentY);
@@ -242,14 +231,14 @@ export default function Canvas({
     onUpdateBox(id, { x: node.x(), y: node.y(), width: Math.max(10, node.width() * sx), height: Math.max(10, node.height() * sy) });
   };
 
-  const cursorStyle = isPanning || rightDragBox ? 'grabbing' : isDrawMode ? 'crosshair' : 'default';
+  const cursorStyle = isPanning ? 'grabbing' : isDrawMode ? 'crosshair' : 'default';
 
   return (
     <div className="flex flex-col items-start gap-2">
       <div className="flex items-center justify-between w-full mb-1">
         <p className="text-xs text-gray-400">
           {isDrawMode
-            ? '左ドラッグ: 描画　右クリック+ドラッグ: ボックス移動　ホイール押し: 画面移動　Scroll: ズーム'
+            ? '左ドラッグ: 描画　右クリック(ボックス上): 選択モードへ　ホイール押し: 画面移動　Scroll: ズーム'
             : '左クリック: 選択/移動　ホイール押し: 画面移動　Scroll: ズーム　Shift+リサイズ: 比率固定'}
         </p>
         <button onClick={handleResetZoom}
