@@ -223,7 +223,7 @@ export default function App() {
             <div className="flex flex-col gap-5">
               {/* Top Row: Canvas & Sidebar */}
               <div className="flex gap-5 items-start">
-                <div className="shrink-0" style={{ width: canvasW }}>
+                <div className="shrink-0" style={{ width: 880 }}>
                   <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                     <div className="flex items-center gap-2 mb-3">
                       <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">キャンバスサイズ:</span>
@@ -246,7 +246,7 @@ export default function App() {
 
                 <div 
                   className="w-72 shrink-0 overflow-y-auto" 
-                  style={{ maxHeight: canvasH + 32 + 2 + 36 }} // match canvas container height (canvasH + 32px padding + 2px border + ~36px for size inputs)
+                  style={{ maxHeight: 580 + 32 + 2 + 36 }} // fixed max height based on 580px canvas container
                 >
                   <Sidebar
                     mode={mode} onModeChange={setMode}
@@ -270,7 +270,7 @@ export default function App() {
               </div>
 
               {/* Bottom Sections: Full Width */}
-              <div className="flex flex-col gap-4" style={{ width: canvasW + 20 + 288 }}>
+              <div className="flex flex-col gap-4" style={{ width: 880 + 20 + 288 }}>
                 <MetricsPanel 
                   metrics={metrics} onCalculate={handleCalculate}
                   iouThreshold={prThreshold} onIouThresholdChange={setPrThreshold}

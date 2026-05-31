@@ -246,7 +246,7 @@ export default function Canvas({
   const cursorStyle = isPanning || rightDragBox ? 'grabbing' : isDrawMode ? 'crosshair' : 'default';
 
   return (
-    <div className="flex flex-col items-start gap-2">
+    <div className="flex flex-col items-start gap-2 w-full">
       <div className="flex items-center justify-between w-full mb-1">
         <p className="text-xs text-gray-400">
           {isDrawMode
@@ -258,8 +258,8 @@ export default function Canvas({
           ズームリセット
         </button>
       </div>
-      <div className="rounded-lg overflow-hidden border border-gray-200 shadow-inner"
-        style={{ width, height, cursor: cursorStyle }}>
+      <div className="rounded-lg overflow-auto border border-gray-200 shadow-inner custom-scrollbar"
+        style={{ width: '100%', maxHeight: 580, cursor: cursorStyle, backgroundColor: bgColor }}>
         <Stage ref={stageRef} width={width} height={height}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
