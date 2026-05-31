@@ -165,57 +165,62 @@ export default function App() {
 
         <main className="flex-1 w-full px-4 py-6">
           <div className="mx-auto w-fit">
-            <div className="flex gap-5 items-start">
-
-              {/* Left column: Canvas → PR curve → Explanation */}
-              <div className="shrink-0" style={{ width: CANVAS_W }}>
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-                  <Canvas
-                    width={CANVAS_W} height={CANVAS_H}
-                    gtBoxes={gtBoxes} predictBoxes={predictBoxes}
-                    mode={mode} bgColor="#e8eaf6" bgImage={bgImage}
-                    iouMatrix={liveIouMatrix}
-                    selectedBoxId={selectedBoxId} onSelectBox={setSelectedBoxId}
-                    onAddBox={handleAddBox} onUpdateBox={handleUpdateBox} onDeleteBox={handleDeleteBox}
-                    classes={classes}
-                    labelDisplay={labelDisplay}
-                  />
+            <div className="flex flex-col gap-5">
+              {/* Top Row: Canvas & Sidebar */}
+              <div className="flex gap-5 items-start">
+                <div className="shrink-0" style={{ width: CANVAS_W }}>
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                    <Canvas
+                      width={CANVAS_W} height={CANVAS_H}
+                      gtBoxes={gtBoxes} predictBoxes={predictBoxes}
+                      mode={mode} bgColor="#e8eaf6" bgImage={bgImage}
+                      iouMatrix={liveIouMatrix}
+                      selectedBoxId={selectedBoxId} onSelectBox={setSelectedBoxId}
+                      onAddBox={handleAddBox} onUpdateBox={handleUpdateBox} onDeleteBox={handleDeleteBox}
+                      classes={classes}
+                      labelDisplay={labelDisplay}
+                    />
+                  </div>
                 </div>
 
+                <div 
+                  className="w-72 shrink-0 overflow-y-auto" 
+                  style={{ maxHeight: CANVAS_H + 32 + 2 }} // match canvas container height (580 + 32px padding + 2px border)
+                >
+                  <Sidebar
+                    mode={mode} onModeChange={setMode}
+                    classes={classes}
+                    onAddClass={handleAddClass}
+                    onUpdateClass={handleUpdateClass}
+                    onDeleteClass={handleDeleteClass}
+                    currentClassId={currentClassId} onCurrentClassChange={setCurrentClassId}
+                    currentConfidence={currentConfidence} onCurrentConfidenceChange={setCurrentConfidence}
+                    onImageUpload={handleImageUpload}
+                    onUploadBoxes={handleUploadBoxes}
+                    selectedBoxId={selectedBoxId}
+                    gtBoxes={gtBoxes} onDeleteGT={handleDeleteBox}
+                    predictBoxes={predictBoxes}
+                    onUpdateBox={handleUpdateBox}
+                    onConvertBox={handleConvertBox}
+                    labelDisplay={labelDisplay} onLabelDisplayChange={setLabelDisplay}
+                  />
+                </div>
+              </div>
+
+              {/* Bottom Sections: Full Width */}
+              <div className="flex flex-col gap-4" style={{ width: CANVAS_W + 20 + 288 }}>
                 <MetricsPanel 
                   metrics={metrics} onCalculate={handleCalculate}
                   iouThreshold={prThreshold} onIouThresholdChange={setPrThreshold}
                 />
 
-                {/* PR Curve */}
-                <div className="mt-4 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
                   <PRCurveChart prCurve={prCurve} ap={prAP} iouThreshold={prThreshold} />
                 </div>
 
-                <div className="mt-4">
+                <div>
                   <ExplanationSection />
                 </div>
-              </div>
-
-              {/* Right column: Tabbed sidebar */}
-              <div className="w-72 shrink-0">
-                <Sidebar
-                  mode={mode} onModeChange={setMode}
-                  classes={classes}
-                  onAddClass={handleAddClass}
-                  onUpdateClass={handleUpdateClass}
-                  onDeleteClass={handleDeleteClass}
-                  currentClassId={currentClassId} onCurrentClassChange={setCurrentClassId}
-                  currentConfidence={currentConfidence} onCurrentConfidenceChange={setCurrentConfidence}
-                  onImageUpload={handleImageUpload}
-                  onUploadBoxes={handleUploadBoxes}
-                  selectedBoxId={selectedBoxId}
-                  gtBoxes={gtBoxes} onDeleteGT={handleDeleteBox}
-                  predictBoxes={predictBoxes}
-                  onUpdateBox={handleUpdateBox}
-                  onConvertBox={handleConvertBox}
-                  labelDisplay={labelDisplay} onLabelDisplayChange={setLabelDisplay}
-                />
               </div>
             </div>
           </div>
