@@ -140,6 +140,7 @@ export default function Canvas({
         const targetId = (e.target as Konva.Node).id();
         const box = [...gtBoxes, ...predictBoxes].find(b => b.id === targetId);
         if (box) {
+          onSelectBox(box.id);
           const p = getCanvasPos();
           setRightDragBox({ id: box.id, startCanvasX: p.x, startCanvasY: p.y, startBoxX: box.x, startBoxY: box.y });
           return;
@@ -194,11 +195,10 @@ export default function Canvas({
   }, [drawState, isDrawMode, mode, onAddBox]);
 
   const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
-    if (e.evt.button !== 0) return;
-    if (isDrawMode) return;
+    if (e.evt.button !== 0 && e.evt.button !== 2) return;
     const name = (e.target as Konva.Node).name();
     if (e.target === e.target.getStage() || name === 'bg') onSelectBox(null);
-  }, [isDrawMode, onSelectBox]);
+  }, [onSelectBox]);
 
   const handleResetZoom = () => {
     const stage = stageRef.current!;
