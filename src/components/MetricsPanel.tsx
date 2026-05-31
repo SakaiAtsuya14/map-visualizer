@@ -18,62 +18,53 @@ export default function MetricsPanel({ metrics, onCalculate, iouThreshold, onIou
   const recall = metrics.recallByThreshold?.[iouThreshold] ?? metrics.recall;
 
   return (
-    <section className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm mt-4">
-      <div className="flex items-center justify-between mb-4">
+    <section className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">評価指標 (Metrics)</h3>
         <button onClick={onCalculate}
-          className="text-sm bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 active:bg-indigo-800 transition font-semibold shadow-sm">
+          className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded hover:bg-indigo-700 active:bg-indigo-800 transition font-semibold shadow-sm">
           mAP を計算
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        <MetricCard label="mAP@50:95" value={pct(metrics.map5095)} color="indigo" />
-        <MetricCard label="mAP@50" value={pct(metrics.map50)} color="blue" />
-        <MetricCard label="mAP@75" value={pct(metrics.map75)} color="purple" />
-      </div>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mb-4">
+        {/* mAPs */}
+        <div className="flex gap-2">
+          <CompactMetric label="mAP@50:95" value={pct(metrics.map5095)} color="indigo" />
+          <CompactMetric label="mAP@50" value={pct(metrics.map50)} color="blue" />
+          <CompactMetric label="mAP@75" value={pct(metrics.map75)} color="purple" />
+        </div>
 
-      <div className="bg-gray-50 rounded-xl p-4 mb-4">
-        <div className="flex items-center gap-3 mb-4">
-          <span className="text-sm font-bold text-gray-700">IoU 閾値</span>
+        {/* Threshold & dynamic metrics */}
+        <div className="flex flex-wrap items-center gap-2 bg-gray-50 px-2 py-1.5 rounded-lg border border-gray-200">
+          <span className="text-xs font-bold text-gray-600 ml-1">IoU 閾値:</span>
           <select
             value={iouThreshold}
             onChange={e => onIouThresholdChange(e.target.value)}
-            className="text-sm border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-indigo-400 bg-white font-mono"
+            className="text-xs border border-gray-300 rounded px-1.5 py-1 outline-none focus:border-indigo-400 bg-white font-mono cursor-pointer"
           >
             {EVAL_THRESHOLDS.map(t => (
               <option key={t} value={t.toFixed(2)}>{t.toFixed(2)}</option>
             ))}
           </select>
-          <div className="flex gap-1.5 flex-wrap">
-            {['0.50', '0.75'].map(t => (
-              <button key={t} onClick={() => onIouThresholdChange(t)}
-                className={`text-sm px-3 py-1.5 rounded-md font-mono transition-all font-medium
-                  ${iouThreshold === t
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'bg-white border border-gray-300 text-gray-600 hover:border-indigo-400'}`}>
-                {t}
-              </button>
-            ))}
+          <div className="h-4 w-px bg-gray-300 mx-1"></div>
+          <div className="flex flex-wrap gap-1.5">
+            <CompactMetric label="TP" value={tp} color="blue" />
+            <CompactMetric label="FP" value={fp} color="red" />
+            <CompactMetric label="FN" value={fn} color="yellow" />
+            <CompactMetric label="Precision" value={pct(precision)} color="green" />
+            <CompactMetric label="Recall" value={pct(recall)} color="green" />
           </div>
-        </div>
-        
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-          <StatusBadge label="TP" value={tp} color="blue" />
-          <StatusBadge label="FP" value={fp} color="red" />
-          <StatusBadge label="FN" value={fn} color="yellow" />
-          <MetricCard label="Precision" value={pct(precision)} color="green" />
-          <MetricCard label="Recall" value={pct(recall)} color="green" />
         </div>
       </div>
 
-      <div className="bg-gray-50 rounded-xl p-4">
-        <p className="text-sm text-gray-500 font-bold mb-3">各IoU閾値のmAP</p>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-x-4 gap-y-2">
+      <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+        <p className="text-xs text-gray-500 font-bold mb-2">各IoU閾値のmAP</p>
+        <div className="flex flex-wrap gap-2">
           {EVAL_THRESHOLDS.map(t => {
             const key = t.toFixed(2);
             return (
-              <div key={key} className="flex justify-between text-sm bg-white px-3 py-1.5 rounded-md border border-gray-200">
+              <div key={key} className="flex items-center gap-2 text-xs bg-white px-2 py-1 rounded border border-gray-200 shadow-sm">
                 <span className="text-gray-500">IoU {key}</span>
                 <span className="font-mono font-semibold text-gray-700">{pct(metrics.mapByThreshold[key] ?? 0)}</span>
               </div>
@@ -85,31 +76,19 @@ export default function MetricsPanel({ metrics, onCalculate, iouThreshold, onIou
   );
 }
 
-function MetricCard({ label, value, color }: { label: string; value: string; color: 'indigo' | 'blue' | 'green' | 'purple' }) {
+function CompactMetric({ label, value, color }: { label: string; value: string | number; color: 'indigo' | 'blue' | 'green' | 'purple' | 'red' | 'yellow' }) {
   const s = { 
-    indigo: 'bg-indigo-50 text-indigo-700 border border-indigo-100',
-    blue: 'bg-blue-50 text-blue-700 border border-blue-100', 
-    green: 'bg-green-50 text-green-700 border border-green-100', 
-    purple: 'bg-purple-50 text-purple-700 border border-purple-100' 
+    indigo: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    blue: 'bg-blue-50 text-blue-700 border-blue-200', 
+    green: 'bg-green-50 text-green-700 border-green-200', 
+    purple: 'bg-purple-50 text-purple-700 border-purple-200',
+    red: 'bg-red-50 text-red-700 border-red-200',
+    yellow: 'bg-yellow-50 text-yellow-800 border-yellow-200' 
   };
   return (
-    <div className={`rounded-lg p-3 text-center shadow-sm ${s[color]}`}>
-      <div className="text-xs font-bold opacity-70 mb-1 uppercase tracking-wider">{label}</div>
-      <div className="text-xl font-extrabold">{value}</div>
-    </div>
-  );
-}
-
-function StatusBadge({ label, value, color }: { label: string; value: number; color: 'blue' | 'red' | 'yellow' }) {
-  const s = { 
-    blue: 'bg-blue-50 text-blue-800 border border-blue-200', 
-    red: 'bg-red-50 text-red-800 border border-red-200', 
-    yellow: 'bg-yellow-50 text-yellow-800 border border-yellow-200' 
-  };
-  return (
-    <div className={`rounded-lg py-3 text-center shadow-sm ${s[color]}`}>
-      <div className="text-xs font-bold opacity-70 mb-1 uppercase tracking-wider">{label}</div>
-      <div className="text-2xl font-extrabold leading-none">{value}</div>
+    <div className={`flex items-center gap-1.5 px-2 py-1 rounded border shadow-sm ${s[color]}`}>
+      <span className="text-[10px] font-bold opacity-75 uppercase tracking-wider">{label}</span>
+      <span className="text-sm font-extrabold">{value}</span>
     </div>
   );
 }
