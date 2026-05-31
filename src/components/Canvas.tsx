@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Stage, Layer, Rect, Text, Transformer, Image as KonvaImage } from 'react-konva';
 import Konva from 'konva';
-import type { BoundingBox, AppMode, ClassDef } from '../types';
+import type { BoundingBox, AppMode, ClassDef, LabelDisplaySettings } from '../types';
 
 const VIZ_IOU_THRESHOLD = 0.5;
 
@@ -28,6 +28,7 @@ interface Props {
   onUpdateBox: (id: string, updates: Partial<BoundingBox>) => void;
   onDeleteBox: (id: string) => void;
   classes: ClassDef[];
+  labelDisplay: LabelDisplaySettings;
 }
 
 interface DrawState {
@@ -36,7 +37,7 @@ interface DrawState {
 
 export default function Canvas({
   width, height, gtBoxes, predictBoxes, mode, bgColor, bgImage,
-  iouMatrix, selectedBoxId, onSelectBox, onAddBox, onUpdateBox, onDeleteBox, classes,
+  iouMatrix, selectedBoxId, onSelectBox, onAddBox, onUpdateBox, onDeleteBox, classes, labelDisplay,
 }: Props) {
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
@@ -279,7 +280,7 @@ export default function Canvas({
                 onSelect={() => { if (!isDrawMode) onSelectBox(box.id); }}
                 onDragEnd={makeDragEnd(box.id)}
                 onTransformEnd={makeTransformEnd}
-                classes={classes}
+                classes={classes} labelDisplay={labelDisplay}
               />
             ))}
 
@@ -289,7 +290,7 @@ export default function Canvas({
                 onSelect={() => { if (!isDrawMode) onSelectBox(box.id); }}
                 onDragEnd={makeDragEnd(box.id)}
                 onTransformEnd={makeTransformEnd}
-                classes={classes}
+                classes={classes} labelDisplay={labelDisplay}
               />
             ))}
 
@@ -333,13 +334,31 @@ interface BoxShapeProps {
   onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => void;
   onTransformEnd: MakeTransformEnd;
   classes: ClassDef[];
+  labelDisplay: LabelDisplaySettings;
 }
 
-function GTBoxShape({ box, isSelected, draggable, onSelect, onDragEnd, onTransformEnd, classes }: BoxShapeProps) {
+function buildGTLabel(box: BoundingBox, classes: ClassDef[], ld: LabelDisplaySettings): string {
+  const cls = classes.find(c => c.id === box.classId);
+  const info: string[] = [];
+  if (ld.showClassId && cls !== undefined) info.push(`#${cls.classId}`);
+  if (ld.showName) info.push(box.label || '未設定');
+  return info.length > 0 ? `GT ${info.join(' ')}` : 'GT';
+}
+
+function buildPredLabel(box: BoundingBox, classes: ClassDef[], ld: LabelDisplaySettings, isTP: boolean): string {
+  const cls = classes.find(c => c.id === box.classId);
+  const prefix = isTP ? 'TP' : 'FP';
+  const info: string[] = [];
+  if (ld.showClassId && cls !== undefined) info.push(`#${cls.classId}`);
+  if (ld.showName) info.push(box.label || '未設定');
+  if (ld.showConfidence) info.push((box.confidence ?? 1).toFixed(2));
+  return info.length > 0 ? `${prefix} ${info.join(' ')}` : prefix;
+}
+
+function GTBoxShape({ box, isSelected, draggable, onSelect, onDragEnd, onTransformEnd, classes, labelDisplay }: BoxShapeProps) {
   const ref = useRef<Konva.Rect>(null);
   const cls = classes.find(c => c.id === box.classId);
   const stroke = isSelected ? SEL_STROKE : (cls?.color ?? GT_STROKE);
-  const displayLabel = box.label || '未設定';
   return (
     <>
       <Rect ref={ref} id={box.id} x={box.x} y={box.y} width={box.width} height={box.height}
@@ -347,20 +366,18 @@ function GTBoxShape({ box, isSelected, draggable, onSelect, onDragEnd, onTransfo
         draggable={draggable} onClick={onSelect} onTap={onSelect}
         onDragEnd={onDragEnd} onTransformEnd={onTransformEnd(box.id, ref)}
       />
-      <BoxLabel x={box.x} y={box.y} text={`GT ${displayLabel}`} color={stroke} />
+      <BoxLabel x={box.x} y={box.y} text={buildGTLabel(box, classes, labelDisplay)} color={stroke} />
     </>
   );
 }
 
 interface PredictBoxShapeProps extends BoxShapeProps { isTP: boolean; }
 
-function PredictBoxShape({ box, isSelected, isTP, draggable, onSelect, onDragEnd, onTransformEnd, classes }: PredictBoxShapeProps) {
+function PredictBoxShape({ box, isSelected, isTP, draggable, onSelect, onDragEnd, onTransformEnd, classes, labelDisplay }: PredictBoxShapeProps) {
   const ref = useRef<Konva.Rect>(null);
   const cls = classes.find(c => c.id === box.classId);
   const stroke = isSelected ? SEL_STROKE : (isTP ? TP_STROKE : (cls?.color ?? PRED_STROKE));
   const fill = isTP ? TP_FILL : PRED_FILL;
-  const conf = (box.confidence ?? 1).toFixed(2);
-  const displayLabel = box.label || '未設定';
   return (
     <>
       <Rect ref={ref} id={box.id} x={box.x} y={box.y} width={box.width} height={box.height}
@@ -368,7 +385,7 @@ function PredictBoxShape({ box, isSelected, isTP, draggable, onSelect, onDragEnd
         draggable={draggable} onClick={onSelect} onTap={onSelect}
         onDragEnd={onDragEnd} onTransformEnd={onTransformEnd(box.id, ref)}
       />
-      <BoxLabel x={box.x} y={box.y} text={`${isTP ? 'TP' : 'FP'} ${displayLabel} ${conf}`} color={stroke} />
+      <BoxLabel x={box.x} y={box.y} text={buildPredLabel(box, classes, labelDisplay, isTP)} color={stroke} />
     </>
   );
 }

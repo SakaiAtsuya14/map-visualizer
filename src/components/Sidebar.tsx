@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { BoundingBox, AppMode, ClassDef } from '../types';
+import type { BoundingBox, AppMode, ClassDef, LabelDisplaySettings } from '../types';
 import type { MetricsResult } from '../utils/metrics';
 import { EVAL_THRESHOLDS } from '../utils/metrics';
 
@@ -12,43 +12,63 @@ interface Props {
   mode: AppMode;
   onModeChange: (m: AppMode) => void;
   classes: ClassDef[];
-  onAddClass: (name: string) => void;
+  onAddClass: (classId: number, name: string) => void;
+  onUpdateClass: (id: string, updates: Partial<Pick<ClassDef, 'classId' | 'name' | 'color'>>) => void;
   onDeleteClass: (id: string) => void;
   currentClassId: string;
   onCurrentClassChange: (id: string) => void;
   currentConfidence: number;
   onCurrentConfidenceChange: (v: number) => void;
   onImageUpload: (f: File) => void;
+  onUploadBoxes: (file: File, type: 'gt' | 'predict') => void;
   selectedBoxId: string | null;
   gtBoxes: BoundingBox[];
   onDeleteGT: (id: string) => void;
   predictBoxes: BoundingBox[];
   onDeletePredict: (id: string) => void;
   onUpdateBox: (id: string, updates: Partial<BoundingBox>) => void;
+  labelDisplay: LabelDisplaySettings;
+  onLabelDisplayChange: (ld: LabelDisplaySettings) => void;
   metrics: MetricsResult;
   onCalculate: () => void;
 }
 
 export default function Sidebar({
-  mode, onModeChange, classes, onAddClass, onDeleteClass,
+  mode, onModeChange, classes, onAddClass, onUpdateClass, onDeleteClass,
   currentClassId, onCurrentClassChange, currentConfidence, onCurrentConfidenceChange,
-  onImageUpload,
+  onImageUpload, onUploadBoxes,
   selectedBoxId, gtBoxes, onDeleteGT, predictBoxes, onDeletePredict, onUpdateBox,
+  labelDisplay, onLabelDisplayChange,
   metrics, onCalculate,
 }: Props) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [newClassName, setNewClassName] = useState('');
+  const imageRef = useRef<HTMLInputElement>(null);
+  const gtFileRef = useRef<HTMLInputElement>(null);
+  const predFileRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) onImageUpload(f);
-  };
+  const [newClassNum, setNewClassNum] = useState('');
+  const [newClassName, setNewClassName] = useState('');
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const nextAutoId = classes.length > 0 ? Math.max(...classes.map(c => c.classId)) + 1 : 0;
 
   const handleAddClass = () => {
-    const name = newClassName.trim();
-    if (!name) return;
-    onAddClass(name);
+    const classId = newClassNum !== '' ? parseInt(newClassNum) : nextAutoId;
+    if (isNaN(classId)) return;
+    onAddClass(classId, newClassName.trim());
+    setNewClassNum('');
     setNewClassName('');
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'gt' | 'predict') => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setUploadError(null);
+    try {
+      await onUploadBoxes(f, type);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : '読み込みエラー');
+    }
+    e.target.value = '';
   };
 
   const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
@@ -66,7 +86,11 @@ export default function Sidebar({
       label: classes.find(c => c.id === e.target.value)?.name ?? box.label,
     })} className="flex-1 text-xs border border-gray-200 rounded px-1.5 py-1 bg-white">
       <option value="">未設定</option>
-      {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
+      {classes.map(cls => (
+        <option key={cls.id} value={cls.id}>
+          {cls.classId}: {cls.name || '(名前なし)'}
+        </option>
+      ))}
     </select>
   );
 
@@ -92,6 +116,25 @@ export default function Sidebar({
             >
               <span className="text-base leading-none mb-0.5">{icon}</span>{label}
             </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Label display settings */}
+      <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">ラベル表示</h3>
+        <div className="flex gap-3">
+          {([
+            { key: 'showClassId', label: 'クラスID' },
+            { key: 'showName',    label: 'クラス名' },
+            { key: 'showConfidence', label: '信頼度' },
+          ] as { key: keyof LabelDisplaySettings; label: string }[]).map(({ key, label }) => (
+            <label key={key} className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer select-none">
+              <input type="checkbox" checked={labelDisplay[key]}
+                onChange={e => onLabelDisplayChange({ ...labelDisplay, [key]: e.target.checked })}
+                className="rounded" />
+              {label}
+            </label>
           ))}
         </div>
       </section>
@@ -140,7 +183,7 @@ export default function Sidebar({
                   color: currentClassId === cls.id ? 'white' : cls.color,
                 }}
                 className="text-xs px-2 py-1 rounded border font-semibold transition-all">
-                {cls.name}
+                {cls.classId}{cls.name ? `: ${cls.name}` : ''}
               </button>
             ))}
             {classes.length === 0 && <span className="text-xs text-gray-400">クラスを追加してください</span>}
@@ -166,41 +209,97 @@ export default function Sidebar({
       {/* Class Management */}
       <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">クラス管理</h3>
-        <div className="space-y-1 mb-2 max-h-28 overflow-y-auto">
+
+        {/* Class list */}
+        <div className="space-y-1 mb-2 max-h-40 overflow-y-auto">
           {classes.map(cls => (
-            <div key={cls.id} className="flex items-center gap-2 px-2 py-1 rounded-lg bg-gray-50">
-              <span className="w-3 h-3 rounded-sm shrink-0 border border-white shadow-sm" style={{ background: cls.color }} />
-              <span className="text-xs flex-1 font-medium text-gray-700">{cls.name}</span>
-              <button onClick={() => onDeleteClass(cls.id)} className="text-gray-300 hover:text-red-500 transition-colors text-xs">✕</button>
+            <div key={cls.id} className="flex items-center gap-1.5 px-1.5 py-1 rounded-lg bg-gray-50">
+              {/* Color picker */}
+              <input type="color" value={cls.color}
+                onChange={e => onUpdateClass(cls.id, { color: e.target.value })}
+                className="w-6 h-6 rounded cursor-pointer border border-gray-300 p-0 shrink-0"
+                title="色を変更" />
+              {/* Numeric class ID */}
+              <input type="number" value={cls.classId} min={0}
+                onChange={e => onUpdateClass(cls.id, { classId: parseInt(e.target.value) || 0 })}
+                className="w-10 text-xs border border-gray-200 rounded px-1 py-0.5 font-mono text-center"
+                title="クラスID" />
+              {/* Class name */}
+              <input type="text" value={cls.name}
+                onChange={e => onUpdateClass(cls.id, { name: e.target.value })}
+                placeholder="名前（任意）"
+                className="flex-1 text-xs border border-gray-200 rounded px-1.5 py-0.5 outline-none focus:border-indigo-400" />
+              <button onClick={() => onDeleteClass(cls.id)}
+                className="text-gray-300 hover:text-red-500 transition-colors text-xs shrink-0">✕</button>
             </div>
           ))}
+          {classes.length === 0 && (
+            <p className="text-xs text-gray-400 text-center py-1">クラスを追加してください</p>
+          )}
         </div>
+
+        {/* Add class form */}
         <div className="flex gap-1.5">
-          <input type="text" placeholder="クラス名"
+          <input type="number" min={0}
+            value={newClassNum}
+            onChange={e => setNewClassNum(e.target.value)}
+            placeholder={String(nextAutoId)}
+            title="クラスID"
+            className="w-12 text-xs border border-gray-200 rounded px-1.5 py-1.5 font-mono text-center outline-none focus:border-indigo-400" />
+          <input type="text"
             value={newClassName}
             onChange={e => setNewClassName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleAddClass()}
+            placeholder="名前（任意）"
             className="flex-1 text-xs border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-indigo-400" />
           <button onClick={handleAddClass}
             className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded hover:bg-indigo-700 transition">追加</button>
         </div>
       </section>
 
-      {/* Image upload */}
+      {/* File input */}
       <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">背景画像</h3>
-        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
-        <button onClick={() => fileRef.current?.click()}
-          className="w-full py-2 text-xs text-gray-500 border border-dashed border-gray-300 rounded-lg hover:border-indigo-400 hover:text-indigo-600 transition">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">ファイル入力</h3>
+
+        {/* Background image */}
+        <p className="text-xs text-gray-400 mb-1">背景画像</p>
+        <input ref={imageRef} type="file" accept="image/*" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) onImageUpload(f); }} />
+        <button onClick={() => imageRef.current?.click()}
+          className="w-full py-1.5 mb-2 text-xs text-gray-500 border border-dashed border-gray-300 rounded-lg hover:border-indigo-400 hover:text-indigo-600 transition">
           画像をアップロード
         </button>
+
+        {/* Annotation upload */}
+        <p className="text-xs text-gray-400 mb-1">アノテーション / 予測結果</p>
+        <p className="text-xs text-gray-400 mb-1.5">対応形式: YOLO .txt　COCO .json　Pascal VOC .xml</p>
+
+        <input ref={gtFileRef} type="file" accept=".txt,.json,.xml" className="hidden"
+          onChange={e => handleFileUpload(e, 'gt')} />
+        <input ref={predFileRef} type="file" accept=".txt,.json,.xml" className="hidden"
+          onChange={e => handleFileUpload(e, 'predict')} />
+
+        <div className="flex gap-1.5">
+          <button onClick={() => gtFileRef.current?.click()}
+            className="flex-1 py-1.5 text-xs text-green-600 border border-green-300 rounded-lg hover:bg-green-50 transition font-medium">
+            GT 読み込み
+          </button>
+          <button onClick={() => predFileRef.current?.click()}
+            className="flex-1 py-1.5 text-xs text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition font-medium">
+            Predict 読み込み
+          </button>
+        </div>
+        {uploadError && (
+          <p className="text-xs text-red-500 mt-1.5 bg-red-50 rounded px-2 py-1">{uploadError}</p>
+        )}
+        <p className="text-xs text-gray-400 mt-1">※ 読み込むと既存ボックスは置換されます</p>
       </section>
 
       {/* GT boxes */}
       <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">GT ボックス（{gtBoxes.length}個）</h3>
         {gtBoxes.length === 0
-          ? <p className="text-xs text-gray-400 text-center py-2">「GT追加」モードで描画</p>
+          ? <p className="text-xs text-gray-400 text-center py-2">「GT追加」モードで描画 または ファイル読み込み</p>
           : (
             <div className="space-y-1.5 max-h-36 overflow-y-auto">
               {gtBoxes.map((box, i) => (
@@ -218,7 +317,7 @@ export default function Sidebar({
       <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Predict ボックス（{predictBoxes.length}個）</h3>
         {predictBoxes.length === 0
-          ? <p className="text-xs text-gray-400 text-center py-2">「Predict追加」モードで描画</p>
+          ? <p className="text-xs text-gray-400 text-center py-2">「Predict追加」モードで描画 または ファイル読み込み</p>
           : (
             <div className="space-y-2 max-h-52 overflow-y-auto">
               {predictBoxes.map((box, i) => (
@@ -254,19 +353,16 @@ export default function Sidebar({
           </button>
         </div>
 
-        {/* mAP@50:95 primary */}
         <div className="bg-indigo-50 rounded-lg p-2.5 text-center mb-2">
           <div className="text-xs text-indigo-500 font-semibold uppercase tracking-wide">mAP@50:95</div>
           <div className="text-2xl font-bold text-indigo-700">{pct(metrics.map5095)}</div>
         </div>
 
-        {/* mAP@50 and mAP@75 */}
         <div className="grid grid-cols-2 gap-1.5 mb-2">
           <MetricCard label="mAP@50" value={pct(metrics.map50)} color="blue" />
           <MetricCard label="mAP@75" value={pct(metrics.map75)} color="purple" />
         </div>
 
-        {/* All thresholds */}
         <div className="bg-gray-50 rounded-lg p-2 mb-2">
           <p className="text-xs text-gray-400 font-semibold mb-1.5">各IoU閾値のmAP</p>
           <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
@@ -282,13 +378,11 @@ export default function Sidebar({
           </div>
         </div>
 
-        {/* Precision / Recall at @50 */}
         <div className="grid grid-cols-2 gap-1.5 mb-2">
           <MetricCard label="Precision" value={pct(metrics.precision)} color="green" />
           <MetricCard label="Recall" value={pct(metrics.recall)} color="green" />
         </div>
 
-        {/* TP / FP / FN */}
         <div className="grid grid-cols-3 gap-1 text-center">
           <StatusBadge label="TP" value={metrics.tp} color="blue" />
           <StatusBadge label="FP" value={metrics.fp} color="red" />

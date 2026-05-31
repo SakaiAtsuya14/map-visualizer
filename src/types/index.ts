@@ -1,7 +1,14 @@
 export interface ClassDef {
-  id: string;
-  name: string;
+  id: string;       // internal UUID
+  classId: number;  // user-visible numeric ID (used in YOLO etc.)
+  name: string;     // display name (can be empty)
   color: string;
+}
+
+export interface LabelDisplaySettings {
+  showClassId: boolean;
+  showName: boolean;
+  showConfidence: boolean;
 }
 
 export interface BoundingBox {

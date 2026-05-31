@@ -6,36 +6,54 @@ import Sidebar, { CLASS_COLORS } from './components/Sidebar';
 import PRCurveChart from './components/PRCurveChart';
 import ExplanationSection from './components/ExplanationSection';
 import Footer from './components/Footer';
-import { BoundingBox, AppMode, ClassDef } from './types';
+import { BoundingBox, AppMode, ClassDef, LabelDisplaySettings } from './types';
 import { calculateMetrics, buildIouMatrix, MetricsResult } from './utils/metrics';
+import { parseBoxFile } from './utils/fileFormats';
 
 const CANVAS_W = 880;
 const CANVAS_H = 580;
 
 const DEFAULT_CLASSES: ClassDef[] = [
-  { id: 'cls-1', name: 'dog',    color: '#f97316' },
-  { id: 'cls-2', name: 'cat',    color: '#8b5cf6' },
-  { id: 'cls-3', name: 'person', color: '#06b6d4' },
+  { id: 'cls-1', classId: 0, name: 'dog',    color: '#f97316' },
+  { id: 'cls-2', classId: 1, name: 'cat',    color: '#8b5cf6' },
+  { id: 'cls-3', classId: 2, name: 'person', color: '#06b6d4' },
 ];
+
+function classLabel(cls: ClassDef | undefined): string {
+  if (!cls) return '';
+  return cls.name || String(cls.classId);
+}
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>('predict-add');
   const [gtBoxes, setGtBoxes] = useState<BoundingBox[]>([]);
   const [predictBoxes, setPredictBoxes] = useState<BoundingBox[]>([]);
   const [bgImage, setBgImage] = useState<string | null>(null);
+  const [bgImageSize, setBgImageSize] = useState<{ w: number; h: number } | null>(null);
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
   const [classes, setClasses] = useState<ClassDef[]>(DEFAULT_CLASSES);
   const [currentClassId, setCurrentClassId] = useState<string>('cls-1');
   const [currentConfidence, setCurrentConfidence] = useState(0.9);
-  const [metrics, setMetrics] = useState<MetricsResult>(() =>
-    calculateMetrics([], [])
-  );
+  const [labelDisplay, setLabelDisplay] = useState<LabelDisplaySettings>({
+    showClassId: false, showName: true, showConfidence: true,
+  });
+  const [metrics, setMetrics] = useState<MetricsResult>(() => calculateMetrics([], []));
 
-  const handleAddClass = useCallback((name: string) => {
+  const handleAddClass = useCallback((classId: number, name: string) => {
     const id = uuidv4();
     const color = CLASS_COLORS[classes.length % CLASS_COLORS.length];
-    setClasses(prev => [...prev, { id, name, color }]);
+    setClasses(prev => [...prev, { id, classId, name, color }]);
   }, [classes.length]);
+
+  const handleUpdateClass = useCallback((id: string, updates: Partial<Pick<ClassDef, 'classId' | 'name' | 'color'>>) => {
+    setClasses(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    if (updates.name !== undefined) {
+      const newLabel = updates.name;
+      const syncLabel = (b: BoundingBox) => b.classId === id ? { ...b, label: newLabel } : b;
+      setGtBoxes(prev => prev.map(syncLabel));
+      setPredictBoxes(prev => prev.map(syncLabel));
+    }
+  }, []);
 
   const handleDeleteClass = useCallback((id: string) => {
     setClasses(prev => prev.filter(c => c.id !== id));
@@ -48,15 +66,31 @@ export default function App() {
 
   const handleImageUpload = useCallback((file: File) => {
     const reader = new FileReader();
-    reader.onload = e => setBgImage(e.target?.result as string);
+    reader.onload = e => {
+      const dataUrl = e.target?.result as string;
+      setBgImage(dataUrl);
+      const img = new Image();
+      img.onload = () => setBgImageSize({ w: img.naturalWidth, h: img.naturalHeight });
+      img.src = dataUrl;
+    };
     reader.readAsDataURL(file);
   }, []);
+
+  const handleUploadBoxes = useCallback(async (file: File, type: 'gt' | 'predict') => {
+    const text = await file.text();
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+    const scaleX = bgImageSize ? CANVAS_W / bgImageSize.w : 1;
+    const scaleY = bgImageSize ? CANVAS_H / bgImageSize.h : 1;
+    const boxes = parseBoxFile(text, ext, type, classes, CANVAS_W, CANVAS_H, scaleX, scaleY);
+    if (type === 'gt') setGtBoxes(boxes);
+    else setPredictBoxes(boxes);
+  }, [classes, bgImageSize]);
 
   const handleAddBox = useCallback((geom: { x: number; y: number; width: number; height: number; type: 'gt' | 'predict' }) => {
     const cls = classes.find(c => c.id === currentClassId);
     const newBox: BoundingBox = {
       id: uuidv4(), ...geom,
-      label: cls?.name ?? 'unknown',
+      label: classLabel(cls),
       classId: currentClassId || undefined,
       confidence: geom.type === 'predict' ? currentConfidence : undefined,
     };
@@ -67,7 +101,7 @@ export default function App() {
 
   const handleUpdateBox = useCallback((id: string, updates: Partial<BoundingBox>) => {
     const enriched = updates.classId !== undefined
-      ? { ...updates, label: classes.find(c => c.id === updates.classId)?.name ?? updates.label ?? '' }
+      ? { ...updates, label: classLabel(classes.find(c => c.id === updates.classId)) }
       : updates;
     setGtBoxes(prev => prev.map(b => b.id === id ? { ...b, ...enriched } : b));
     setPredictBoxes(prev => prev.map(b => b.id === id ? { ...b, ...enriched } : b));
@@ -122,21 +156,27 @@ export default function App() {
                   selectedBoxId={selectedBoxId} onSelectBox={setSelectedBoxId}
                   onAddBox={handleAddBox} onUpdateBox={handleUpdateBox} onDeleteBox={handleDeleteBox}
                   classes={classes}
+                  labelDisplay={labelDisplay}
                 />
               </div>
 
               <div className="w-72 shrink-0">
                 <Sidebar
                   mode={mode} onModeChange={setMode}
-                  classes={classes} onAddClass={handleAddClass} onDeleteClass={handleDeleteClass}
+                  classes={classes}
+                  onAddClass={handleAddClass}
+                  onUpdateClass={handleUpdateClass}
+                  onDeleteClass={handleDeleteClass}
                   currentClassId={currentClassId} onCurrentClassChange={setCurrentClassId}
                   currentConfidence={currentConfidence} onCurrentConfidenceChange={setCurrentConfidence}
                   onImageUpload={handleImageUpload}
+                  onUploadBoxes={handleUploadBoxes}
                   selectedBoxId={selectedBoxId}
                   gtBoxes={gtBoxes} onDeleteGT={handleDeleteBox}
                   predictBoxes={predictBoxes}
                   onDeletePredict={handleDeleteBox}
                   onUpdateBox={handleUpdateBox}
+                  labelDisplay={labelDisplay} onLabelDisplayChange={setLabelDisplay}
                   metrics={metrics}
                   onCalculate={handleCalculate}
                 />
