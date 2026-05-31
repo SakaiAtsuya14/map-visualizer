@@ -83,10 +83,54 @@ export default function App() {
     const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
     const scaleX = bgImageSize ? CANVAS_W / bgImageSize.w : 1;
     const scaleY = bgImageSize ? CANVAS_H / bgImageSize.h : 1;
-    const boxes = parseBoxFile(text, ext, type, classes, CANVAS_W, CANVAS_H, scaleX, scaleY);
-    if (type === 'gt') setGtBoxes(boxes);
-    else setPredictBoxes(boxes);
-  }, [classes, bgImageSize]);
+    
+    // Parse boxes with empty classes to discard existing class definitions
+    const newBoxes = parseBoxFile(text, ext, type, [], CANVAS_W, CANVAS_H, scaleX, scaleY);
+    
+    const nextGt = type === 'gt' ? newBoxes : gtBoxes;
+    const nextPredict = type === 'predict' ? newBoxes : predictBoxes;
+    
+    // Extract unique labels from all current and new boxes
+    const uniqueLabels = new Set<string>();
+    [...nextGt, ...nextPredict].forEach(b => {
+      if (b.label) uniqueLabels.add(b.label);
+    });
+    
+    // Sort logically (numbers first, then alphabetical)
+    const sortedLabels = Array.from(uniqueLabels).sort((a, b) => {
+      const numA = parseInt(a);
+      const numB = parseInt(b);
+      if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+      return a.localeCompare(b);
+    });
+    
+    // Create new classes
+    const newClasses: ClassDef[] = sortedLabels.map((label, i) => {
+      // Determine numeric ID if the label is a number (e.g., from YOLO)
+      const numLabel = parseInt(label);
+      const cId = !isNaN(numLabel) ? numLabel : i;
+      return {
+        id: uuidv4(),
+        classId: cId,
+        name: label,
+        color: CLASS_COLORS[i % CLASS_COLORS.length]
+      };
+    });
+    
+    // Update the boxes to reference the new ClassDef IDs
+    const updateBoxes = (bxs: BoundingBox[]) => bxs.map(b => {
+      const cls = newClasses.find(c => c.name === b.label);
+      return { ...b, classId: cls?.id };
+    });
+    
+    setClasses(newClasses);
+    if (newClasses.length > 0 && !newClasses.find(c => c.id === currentClassId)) {
+      setCurrentClassId(newClasses[0].id);
+    }
+    
+    setGtBoxes(type === 'gt' ? updateBoxes(newBoxes) : updateBoxes(nextGt));
+    setPredictBoxes(type === 'predict' ? updateBoxes(newBoxes) : updateBoxes(nextPredict));
+  }, [bgImageSize, gtBoxes, predictBoxes, currentClassId]);
 
   const handleAddBox = useCallback((geom: { x: number; y: number; width: number; height: number; type: 'gt' | 'predict' }) => {
     const cls = classes.find(c => c.id === currentClassId);
