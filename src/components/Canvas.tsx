@@ -195,10 +195,11 @@ export default function Canvas({
   }, [drawState, isDrawMode, mode, onAddBox]);
 
   const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (isDrawMode && e.evt.button === 0) return;
     if (e.evt.button !== 0 && e.evt.button !== 2) return;
     const name = (e.target as Konva.Node).name();
     if (e.target === e.target.getStage() || name === 'bg') onSelectBox(null);
-  }, [onSelectBox]);
+  }, [isDrawMode, onSelectBox]);
 
   const handleResetZoom = () => {
     const stage = stageRef.current!;
