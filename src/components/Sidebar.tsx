@@ -1,7 +1,6 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import type { BoundingBox, AppMode, ClassDef, LabelDisplaySettings } from '../types';
-import type { MetricsResult } from '../utils/metrics';
-import { EVAL_THRESHOLDS } from '../utils/metrics';
+
 
 const CLASS_COLORS = [
   '#ef4444','#f97316','#eab308','#22c55e',
@@ -29,11 +28,59 @@ interface Props {
   onConvertBox: (id: string) => void;
   labelDisplay: LabelDisplaySettings;
   onLabelDisplayChange: (ld: LabelDisplaySettings) => void;
-  metrics: MetricsResult;
-  onCalculate: () => void;
 }
 
 type Tab = 'draw' | 'data';
+
+function DropZone({
+  accept, onFile, label, colorScheme,
+}: {
+  accept: string;
+  onFile: (file: File) => void;
+  label: string;
+  colorScheme: 'indigo' | 'green' | 'red';
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const counter = useRef(0);
+  const [over, setOver] = useState(false);
+
+  const colors = {
+    indigo: { border: 'border-indigo-400', bg: 'bg-indigo-50', text: 'text-indigo-600', hover: 'hover:border-indigo-400 hover:text-indigo-600' },
+    green:  { border: 'border-green-400',  bg: 'bg-green-50',  text: 'text-green-600',  hover: 'hover:border-green-400 hover:text-green-600' },
+    red:    { border: 'border-red-400',    bg: 'bg-red-50',    text: 'text-red-600',    hover: 'hover:border-red-400 hover:text-red-600' },
+  }[colorScheme];
+
+  const handle = useCallback((file: File) => { onFile(file); }, [onFile]);
+
+  const onDragEnter = (e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation(); counter.current++; setOver(true);
+  };
+  const onDragLeave = (e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation(); counter.current--; if (counter.current === 0) setOver(false);
+  };
+  const onDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'copy'; };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation(); counter.current = 0; setOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handle(file);
+  };
+
+  return (
+    <div
+      className={`w-full py-2 px-3 text-xs border border-dashed rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 select-none
+        ${over ? `${colors.border} ${colors.bg} ${colors.text}` : `border-gray-300 text-gray-500 ${colors.hover}`}`}
+      onDragEnter={onDragEnter} onDragLeave={onDragLeave} onDragOver={onDragOver} onDrop={onDrop}
+      onClick={() => inputRef.current?.click()}
+    >
+      <input ref={inputRef} type="file" accept={accept} className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) { handle(f); e.target.value = ''; } }} />
+      <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+      </svg>
+      {over ? 'ドロップして読み込む' : label}
+    </div>
+  );
+}
 
 export default function Sidebar({
   mode, onModeChange, classes, onAddClass, onUpdateClass, onDeleteClass,
@@ -41,12 +88,7 @@ export default function Sidebar({
   onImageUpload, onUploadBoxes,
   selectedBoxId, gtBoxes, onDeleteGT, predictBoxes, onUpdateBox, onConvertBox,
   labelDisplay, onLabelDisplayChange,
-  metrics, onCalculate,
 }: Props) {
-  const imageRef = useRef<HTMLInputElement>(null);
-  const gtFileRef = useRef<HTMLInputElement>(null);
-  const predFileRef = useRef<HTMLInputElement>(null);
-
   const [activeTab, setActiveTab] = useState<Tab>('draw');
   const [newClassNum, setNewClassNum] = useState('');
   const [newClassName, setNewClassName] = useState('');
@@ -62,17 +104,14 @@ export default function Sidebar({
     setNewClassName('');
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'gt' | 'predict') => {
-    const f = e.target.files?.[0];
-    if (!f) return;
+  const handleBoxFile = useCallback(async (file: File, type: 'gt' | 'predict') => {
     setUploadError(null);
     try {
-      await onUploadBoxes(f, type);
+      await onUploadBoxes(file, type);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : '読み込みエラー');
     }
-    e.target.value = '';
-  };
+  }, [onUploadBoxes]);
 
   const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
   const isDrawMode = mode === 'gt-add' || mode === 'predict-add';
@@ -291,27 +330,15 @@ export default function Sidebar({
           <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">ファイル入力</h3>
             <p className="text-xs text-gray-400 mb-1">背景画像</p>
-            <input ref={imageRef} type="file" accept="image/*" className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) onImageUpload(f); }} />
-            <button onClick={() => imageRef.current?.click()}
-              className="w-full py-1.5 mb-3 text-xs text-gray-500 border border-dashed border-gray-300 rounded-lg hover:border-indigo-400 hover:text-indigo-600 transition">
-              画像をアップロード
-            </button>
-            <p className="text-xs text-gray-400 mb-1">アノテーション / 予測結果</p>
+            <DropZone accept="image/*" colorScheme="indigo" label="画像をアップロード / ドラッグ＆ドロップ"
+              onFile={onImageUpload} />
+            <p className="text-xs text-gray-400 mt-3 mb-1">アノテーション / 予測結果</p>
             <p className="text-xs text-gray-400 mb-1.5">YOLO .txt　/ COCO .json　/ Pascal VOC .xml</p>
-            <input ref={gtFileRef} type="file" accept=".txt,.json,.xml" className="hidden"
-              onChange={e => handleFileUpload(e, 'gt')} />
-            <input ref={predFileRef} type="file" accept=".txt,.json,.xml" className="hidden"
-              onChange={e => handleFileUpload(e, 'predict')} />
-            <div className="flex gap-1.5">
-              <button onClick={() => gtFileRef.current?.click()}
-                className="flex-1 py-1.5 text-xs text-green-600 border border-green-300 rounded-lg hover:bg-green-50 transition font-medium">
-                GT 読み込み
-              </button>
-              <button onClick={() => predFileRef.current?.click()}
-                className="flex-1 py-1.5 text-xs text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition font-medium">
-                Predict 読み込み
-              </button>
+            <div className="flex flex-col gap-1.5">
+              <DropZone accept=".txt,.json,.xml" colorScheme="green" label="GT 読み込み / ドラッグ＆ドロップ"
+                onFile={f => handleBoxFile(f, 'gt')} />
+              <DropZone accept=".txt,.json,.xml" colorScheme="red" label="Predict 読み込み / ドラッグ＆ドロップ"
+                onFile={f => handleBoxFile(f, 'predict')} />
             </div>
             {uploadError && (
               <p className="text-xs text-red-500 mt-1.5 bg-red-50 rounded px-2 py-1">{uploadError}</p>
@@ -321,73 +348,6 @@ export default function Sidebar({
         </>
       )}
 
-      {/* ── 評価（常時表示） ── */}
-      <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">評価指標</h3>
-          <button onClick={onCalculate}
-            className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 active:bg-indigo-800 transition font-semibold shadow-sm">
-            mAP を計算
-          </button>
-        </div>
-
-        <div className="bg-indigo-50 rounded-lg p-2.5 text-center mb-2">
-          <div className="text-xs text-indigo-500 font-semibold uppercase tracking-wide">mAP@50:95</div>
-          <div className="text-2xl font-bold text-indigo-700">{pct(metrics.map5095)}</div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-1.5 mb-2">
-          <MetricCard label="mAP@50" value={pct(metrics.map50)} color="blue" />
-          <MetricCard label="mAP@75" value={pct(metrics.map75)} color="purple" />
-        </div>
-
-        <div className="bg-gray-50 rounded-lg p-2 mb-2">
-          <p className="text-xs text-gray-400 font-semibold mb-1.5">各IoU閾値のmAP</p>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
-            {EVAL_THRESHOLDS.map(t => {
-              const key = t.toFixed(2);
-              return (
-                <div key={key} className="flex justify-between text-xs">
-                  <span className="text-gray-500">IoU {key}</span>
-                  <span className="font-mono font-semibold text-gray-700">{pct(metrics.mapByThreshold[key] ?? 0)}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-1.5 mb-2">
-          <MetricCard label="Precision" value={pct(metrics.precision)} color="green" />
-          <MetricCard label="Recall" value={pct(metrics.recall)} color="green" />
-        </div>
-
-        <div className="grid grid-cols-3 gap-1 text-center">
-          <StatusBadge label="TP" value={metrics.tp} color="blue" />
-          <StatusBadge label="FP" value={metrics.fp} color="red" />
-          <StatusBadge label="FN" value={metrics.fn} color="yellow" />
-        </div>
-        <p className="text-xs text-gray-400 mt-1.5 text-center">Precision / Recall / TP / FP / FN は IoU=0.50</p>
-      </section>
-    </div>
-  );
-}
-
-function MetricCard({ label, value, color }: { label: string; value: string; color: 'blue' | 'green' | 'purple' }) {
-  const s = { blue: 'bg-blue-50 text-blue-700', green: 'bg-green-50 text-green-700', purple: 'bg-purple-50 text-purple-700' };
-  return (
-    <div className={`rounded-lg p-2 text-center ${s[color]}`}>
-      <div className="text-xs font-semibold opacity-70">{label}</div>
-      <div className="text-sm font-bold">{value}</div>
-    </div>
-  );
-}
-
-function StatusBadge({ label, value, color }: { label: string; value: number; color: 'blue' | 'red' | 'yellow' }) {
-  const s = { blue: 'bg-blue-100 text-blue-800', red: 'bg-red-100 text-red-800', yellow: 'bg-yellow-100 text-yellow-800' };
-  return (
-    <div className={`rounded-md py-1.5 text-center ${s[color]}`}>
-      <div className="text-xs opacity-70">{label}</div>
-      <div className="text-lg font-bold leading-tight">{value}</div>
     </div>
   );
 }

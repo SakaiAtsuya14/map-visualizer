@@ -4,6 +4,7 @@ import Header from './components/Header';
 import Canvas from './components/Canvas';
 import Sidebar, { CLASS_COLORS } from './components/Sidebar';
 import PRCurveChart from './components/PRCurveChart';
+import MetricsPanel from './components/MetricsPanel';
 import ExplanationSection from './components/ExplanationSection';
 import Footer from './components/Footer';
 import { BoundingBox, AppMode, ClassDef, LabelDisplaySettings } from './types';
@@ -181,6 +182,8 @@ export default function App() {
                   />
                 </div>
 
+                <MetricsPanel metrics={metrics} onCalculate={handleCalculate} />
+
                 {/* PR Curve */}
                 <div className="mt-4 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
                   <div className="flex items-center gap-3 mb-4">
@@ -232,8 +235,6 @@ export default function App() {
                   onUpdateBox={handleUpdateBox}
                   onConvertBox={handleConvertBox}
                   labelDisplay={labelDisplay} onLabelDisplayChange={setLabelDisplay}
-                  metrics={metrics}
-                  onCalculate={handleCalculate}
                 />
               </div>
             </div>
