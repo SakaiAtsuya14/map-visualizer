@@ -19,6 +19,11 @@ export interface MetricsResult {
   tp: number;
   fp: number;
   fn: number;
+  tpByThreshold: Record<string, number>;
+  fpByThreshold: Record<string, number>;
+  fnByThreshold: Record<string, number>;
+  precisionByThreshold: Record<string, number>;
+  recallByThreshold: Record<string, number>;
   iouMatrix: Map<string, Map<string, number>>;
 }
 
@@ -134,12 +139,22 @@ export function calculateMetrics(
       prCurve: [],
       prCurveByThreshold: Object.fromEntries(EVAL_THRESHOLDS.map(t => [t.toFixed(2), []])),
       tp: 0, fp: predictBoxes.length, fn: gtBoxes.length,
+      tpByThreshold: Object.fromEntries(EVAL_THRESHOLDS.map(t => [t.toFixed(2), 0])),
+      fpByThreshold: Object.fromEntries(EVAL_THRESHOLDS.map(t => [t.toFixed(2), predictBoxes.length])),
+      fnByThreshold: Object.fromEntries(EVAL_THRESHOLDS.map(t => [t.toFixed(2), gtBoxes.length])),
+      precisionByThreshold: Object.fromEntries(EVAL_THRESHOLDS.map(t => [t.toFixed(2), predictBoxes.length === 0 ? 1 : 0])),
+      recallByThreshold: Object.fromEntries(EVAL_THRESHOLDS.map(t => [t.toFixed(2), 0])),
       iouMatrix,
     };
   }
 
   const mapByThreshold: Record<string, number> = {};
   const prCurveByThreshold: Record<string, PRPoint[]> = {};
+  const tpByThreshold: Record<string, number> = {};
+  const fpByThreshold: Record<string, number> = {};
+  const fnByThreshold: Record<string, number> = {};
+  const precisionByThreshold: Record<string, number> = {};
+  const recallByThreshold: Record<string, number> = {};
   let at50: ThresholdResult | null = null;
 
   for (const t of EVAL_THRESHOLDS) {
@@ -147,6 +162,11 @@ export function calculateMetrics(
     const key = t.toFixed(2);
     mapByThreshold[key] = res.mAP;
     prCurveByThreshold[key] = res.prCurve;
+    tpByThreshold[key] = res.tp;
+    fpByThreshold[key] = res.fp;
+    fnByThreshold[key] = res.fn;
+    precisionByThreshold[key] = res.precision;
+    recallByThreshold[key] = res.recall;
     if (t === 0.5) at50 = res;
   }
 
@@ -164,6 +184,11 @@ export function calculateMetrics(
     tp: at50!.tp,
     fp: at50!.fp,
     fn: at50!.fn,
+    tpByThreshold,
+    fpByThreshold,
+    fnByThreshold,
+    precisionByThreshold,
+    recallByThreshold,
     iouMatrix,
   };
 }
