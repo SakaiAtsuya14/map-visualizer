@@ -113,6 +113,20 @@ export default function App() {
     if (selectedBoxId === id) setSelectedBoxId(null);
   }, [selectedBoxId]);
 
+  const handleConvertBox = useCallback((id: string) => {
+    const gtBox = gtBoxes.find(b => b.id === id);
+    if (gtBox) {
+      setGtBoxes(prev => prev.filter(b => b.id !== id));
+      setPredictBoxes(prev => [...prev, { ...gtBox, type: 'predict', confidence: currentConfidence }]);
+      return;
+    }
+    const predBox = predictBoxes.find(b => b.id === id);
+    if (predBox) {
+      setPredictBoxes(prev => prev.filter(b => b.id !== id));
+      setGtBoxes(prev => [...prev, { ...predBox, type: 'gt', confidence: undefined }]);
+    }
+  }, [gtBoxes, predictBoxes, currentConfidence]);
+
   const liveIouMatrix = useMemo(
     () => buildIouMatrix(gtBoxes, predictBoxes),
     [gtBoxes, predictBoxes],
@@ -176,6 +190,7 @@ export default function App() {
                   predictBoxes={predictBoxes}
                   onDeletePredict={handleDeleteBox}
                   onUpdateBox={handleUpdateBox}
+                  onConvertBox={handleConvertBox}
                   labelDisplay={labelDisplay} onLabelDisplayChange={setLabelDisplay}
                   metrics={metrics}
                   onCalculate={handleCalculate}

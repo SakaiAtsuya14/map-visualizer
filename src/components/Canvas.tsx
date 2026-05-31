@@ -51,6 +51,8 @@ export default function Canvas({
     id: string; startCanvasX: number; startCanvasY: number; startBoxX: number; startBoxY: number;
   } | null>(null);
 
+  const isDrawMode = mode === 'gt-add' || mode === 'predict-add';
+
   // Load background image
   useEffect(() => {
     if (!bgImage) { setBgImageEl(null); return; }
@@ -59,18 +61,18 @@ export default function Canvas({
     img.src = bgImage;
   }, [bgImage]);
 
-  // Attach transformer to selected node
+  // Attach transformer to selected node — hide in draw mode so anchors don't interfere
   useEffect(() => {
     const tr = trRef.current;
     if (!tr) return;
-    if (selectedBoxId) {
+    if (selectedBoxId && !isDrawMode) {
       const node = stageRef.current?.findOne('#' + selectedBoxId);
       tr.nodes(node ? [node] : []);
     } else {
       tr.nodes([]);
     }
     tr.getLayer()?.batchDraw();
-  }, [selectedBoxId]);
+  }, [selectedBoxId, isDrawMode]);
 
   // Keyboard handlers
   useEffect(() => {
@@ -102,8 +104,6 @@ export default function Canvas({
     container.addEventListener('contextmenu', prevent);
     return () => container.removeEventListener('contextmenu', prevent);
   }, []);
-
-  const isDrawMode = mode === 'gt-add' || mode === 'predict-add';
 
   const getCanvasPos = useCallback(() => {
     const stage = stageRef.current!;
@@ -152,8 +152,6 @@ export default function Canvas({
     // Only left click for drawing
     if (e.evt.button !== 0) return;
     if (!isDrawMode) return;
-    const name = (e.target as Konva.Node).name();
-    if (e.target !== e.target.getStage() && name !== 'bg') return;
     const p = getCanvasPos();
     setDrawState({ startX: p.x, startY: p.y, currentX: p.x, currentY: p.y });
   }, [isDrawMode, getCanvasPos, gtBoxes, predictBoxes]);

@@ -27,6 +27,7 @@ interface Props {
   predictBoxes: BoundingBox[];
   onDeletePredict: (id: string) => void;
   onUpdateBox: (id: string, updates: Partial<BoundingBox>) => void;
+  onConvertBox: (id: string) => void;
   labelDisplay: LabelDisplaySettings;
   onLabelDisplayChange: (ld: LabelDisplaySettings) => void;
   metrics: MetricsResult;
@@ -37,7 +38,7 @@ export default function Sidebar({
   mode, onModeChange, classes, onAddClass, onUpdateClass, onDeleteClass,
   currentClassId, onCurrentClassChange, currentConfidence, onCurrentConfidenceChange,
   onImageUpload, onUploadBoxes,
-  selectedBoxId, gtBoxes, onDeleteGT, predictBoxes, onDeletePredict, onUpdateBox,
+  selectedBoxId, gtBoxes, onDeleteGT, predictBoxes, onDeletePredict, onUpdateBox, onConvertBox,
   labelDisplay, onLabelDisplayChange,
   metrics, onCalculate,
 }: Props) {
@@ -165,6 +166,22 @@ export default function Sidebar({
                 </div>
               </div>
             )}
+            {/* Convert and Delete actions */}
+            <div className="flex gap-1.5 pt-0.5">
+              <button
+                onClick={() => onConvertBox(selectedBox.id)}
+                className={`flex-1 text-xs py-1.5 rounded-lg border font-medium transition-all
+                  ${selectedBox.type === 'gt'
+                    ? 'border-red-300 text-red-600 hover:bg-red-50'
+                    : 'border-green-300 text-green-600 hover:bg-green-50'}`}>
+                {selectedBox.type === 'gt' ? '→ Predict に変換' : '→ GT に変換'}
+              </button>
+              <button
+                onClick={() => onDeleteGT(selectedBox.id)}
+                className="text-xs py-1.5 px-3 rounded-lg border border-gray-300 text-gray-500 hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-all">
+                削除
+              </button>
+            </div>
           </div>
         </section>
       )}
