@@ -176,7 +176,6 @@ export default function App() {
                       mode={mode} bgColor="#e8eaf6" bgImage={bgImage}
                       iouMatrix={liveIouMatrix}
                       selectedBoxId={selectedBoxId} onSelectBox={setSelectedBoxId}
-                      onModeChange={setMode}
                       onAddBox={handleAddBox} onUpdateBox={handleUpdateBox} onDeleteBox={handleDeleteBox}
                       classes={classes}
                       labelDisplay={labelDisplay}
