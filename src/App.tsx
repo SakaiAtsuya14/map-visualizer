@@ -7,7 +7,7 @@ import PRCurveChart from './components/PRCurveChart';
 import ExplanationSection from './components/ExplanationSection';
 import Footer from './components/Footer';
 import { BoundingBox, AppMode, ClassDef, LabelDisplaySettings } from './types';
-import { calculateMetrics, buildIouMatrix, MetricsResult } from './utils/metrics';
+import { calculateMetrics, buildIouMatrix, MetricsResult, EVAL_THRESHOLDS } from './utils/metrics';
 import { parseBoxFile } from './utils/fileFormats';
 
 const CANVAS_W = 880;
@@ -38,6 +38,7 @@ export default function App() {
     showClassId: false, showName: true, showConfidence: true,
   });
   const [metrics, setMetrics] = useState<MetricsResult>(() => calculateMetrics([], []));
+  const [prThreshold, setPrThreshold] = useState('0.50');
 
   const handleAddClass = useCallback((classId: number, name: string) => {
     const id = uuidv4();
@@ -136,6 +137,9 @@ export default function App() {
     setMetrics(calculateMetrics(gtBoxes, predictBoxes));
   }, [gtBoxes, predictBoxes]);
 
+  const prCurve = metrics.prCurveByThreshold[prThreshold] ?? metrics.prCurve;
+  const prAP = metrics.mapByThreshold[prThreshold] ?? metrics.map50;
+
   return (
     <>
       {/* Mobile fallback */}
@@ -161,19 +165,56 @@ export default function App() {
         <main className="flex-1 w-full px-4 py-6">
           <div className="mx-auto w-fit">
             <div className="flex gap-5 items-start">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 shrink-0">
-                <Canvas
-                  width={CANVAS_W} height={CANVAS_H}
-                  gtBoxes={gtBoxes} predictBoxes={predictBoxes}
-                  mode={mode} bgColor="#e8eaf6" bgImage={bgImage}
-                  iouMatrix={liveIouMatrix}
-                  selectedBoxId={selectedBoxId} onSelectBox={setSelectedBoxId}
-                  onAddBox={handleAddBox} onUpdateBox={handleUpdateBox} onDeleteBox={handleDeleteBox}
-                  classes={classes}
-                  labelDisplay={labelDisplay}
-                />
+
+              {/* Left column: Canvas → PR curve → Explanation */}
+              <div className="shrink-0" style={{ width: CANVAS_W }}>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                  <Canvas
+                    width={CANVAS_W} height={CANVAS_H}
+                    gtBoxes={gtBoxes} predictBoxes={predictBoxes}
+                    mode={mode} bgColor="#e8eaf6" bgImage={bgImage}
+                    iouMatrix={liveIouMatrix}
+                    selectedBoxId={selectedBoxId} onSelectBox={setSelectedBoxId}
+                    onAddBox={handleAddBox} onUpdateBox={handleUpdateBox} onDeleteBox={handleDeleteBox}
+                    classes={classes}
+                    labelDisplay={labelDisplay}
+                  />
+                </div>
+
+                {/* PR Curve */}
+                <div className="mt-4 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+                  <div className="flex items-center gap-3 mb-4">
+                    <span className="text-xs text-gray-500 font-medium">IoU 閾値</span>
+                    <select
+                      value={prThreshold}
+                      onChange={e => setPrThreshold(e.target.value)}
+                      className="text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-indigo-400 bg-white font-mono"
+                    >
+                      {EVAL_THRESHOLDS.map(t => (
+                        <option key={t} value={t.toFixed(2)}>{t.toFixed(2)}</option>
+                      ))}
+                    </select>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {['0.50', '0.75'].map(t => (
+                        <button key={t} onClick={() => setPrThreshold(t)}
+                          className={`text-xs px-2 py-1 rounded-md font-mono transition-all
+                            ${prThreshold === t
+                              ? 'bg-indigo-600 text-white'
+                              : 'border border-gray-200 text-gray-500 hover:border-indigo-300'}`}>
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <PRCurveChart prCurve={prCurve} ap={prAP} iouThreshold={prThreshold} />
+                </div>
+
+                <div className="mt-4">
+                  <ExplanationSection />
+                </div>
               </div>
 
+              {/* Right column: Tabbed sidebar */}
               <div className="w-72 shrink-0">
                 <Sidebar
                   mode={mode} onModeChange={setMode}
@@ -196,15 +237,6 @@ export default function App() {
                   onCalculate={handleCalculate}
                 />
               </div>
-            </div>
-
-            <div className="mt-5 bg-white rounded-xl shadow-sm border border-gray-200 p-6"
-              style={{ width: CANVAS_W + 288 + 20 }}>
-              <PRCurveChart prCurve={metrics.prCurve} ap={metrics.map50} />
-            </div>
-
-            <div className="mt-5" style={{ width: CANVAS_W + 288 + 20 }}>
-              <ExplanationSection />
             </div>
           </div>
         </main>

@@ -7,9 +7,10 @@ import type { PRPoint } from '../utils/metrics';
 interface Props {
   prCurve: PRPoint[];
   ap: number;
+  iouThreshold: string;
 }
 
-export default function PRCurveChart({ prCurve, ap }: Props) {
+export default function PRCurveChart({ prCurve, ap, iouThreshold }: Props) {
   const data = [
     { recall: 0, precision: prCurve.length > 0 ? prCurve[0].precision : 1 },
     ...prCurve,
@@ -21,7 +22,7 @@ export default function PRCurveChart({ prCurve, ap }: Props) {
         <div>
           <h2 className="text-base font-bold text-gray-800">PR 曲線（Precision-Recall Curve）</h2>
           <p className="text-xs text-gray-500 mt-0.5">
-            Predict ボックスを追加・信頼度を変更するとリアルタイムで更新されます
+            IoU 閾値 = <span className="font-semibold text-indigo-600">{iouThreshold}</span> での曲線 ／ 「mAP を計算」後に更新
           </p>
         </div>
         <div className="text-right">

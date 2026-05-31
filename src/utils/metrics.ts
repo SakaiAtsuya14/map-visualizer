@@ -15,6 +15,7 @@ export interface MetricsResult {
   map5095: number;
   mapByThreshold: Record<string, number>;
   prCurve: PRPoint[];
+  prCurveByThreshold: Record<string, PRPoint[]>;
   tp: number;
   fp: number;
   fn: number;
@@ -131,17 +132,21 @@ export function calculateMetrics(
       map50: 0, map75: 0, map5095: 0,
       mapByThreshold: emptyThresholds,
       prCurve: [],
+      prCurveByThreshold: Object.fromEntries(EVAL_THRESHOLDS.map(t => [t.toFixed(2), []])),
       tp: 0, fp: predictBoxes.length, fn: gtBoxes.length,
       iouMatrix,
     };
   }
 
   const mapByThreshold: Record<string, number> = {};
+  const prCurveByThreshold: Record<string, PRPoint[]> = {};
   let at50: ThresholdResult | null = null;
 
   for (const t of EVAL_THRESHOLDS) {
     const res = computeAtThreshold(gtBoxes, predictBoxes, iouMatrix, t);
-    mapByThreshold[t.toFixed(2)] = res.mAP;
+    const key = t.toFixed(2);
+    mapByThreshold[key] = res.mAP;
+    prCurveByThreshold[key] = res.prCurve;
     if (t === 0.5) at50 = res;
   }
 
@@ -155,6 +160,7 @@ export function calculateMetrics(
     map5095,
     mapByThreshold,
     prCurve: at50!.prCurve,
+    prCurveByThreshold,
     tp: at50!.tp,
     fp: at50!.fp,
     fn: at50!.fn,
