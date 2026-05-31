@@ -229,7 +229,6 @@ export default function App() {
                   selectedBoxId={selectedBoxId}
                   gtBoxes={gtBoxes} onDeleteGT={handleDeleteBox}
                   predictBoxes={predictBoxes}
-                  onDeletePredict={handleDeleteBox}
                   onUpdateBox={handleUpdateBox}
                   onConvertBox={handleConvertBox}
                   labelDisplay={labelDisplay} onLabelDisplayChange={setLabelDisplay}
