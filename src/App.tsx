@@ -8,7 +8,6 @@ import ExplanationSection from './components/ExplanationSection';
 import Footer from './components/Footer';
 import { BoundingBox, AppMode, ClassDef } from './types';
 import { calculateMetrics } from './utils/metrics';
-import { presets } from './data/presets';
 
 const CANVAS_W = 880;
 const CANVAS_H = 580;
@@ -24,9 +23,7 @@ export default function App() {
   const [gtBoxes, setGtBoxes] = useState<BoundingBox[]>([]);
   const [predictBoxes, setPredictBoxes] = useState<BoundingBox[]>([]);
   const [iouThreshold, setIouThreshold] = useState(0.5);
-  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [bgImage, setBgImage] = useState<string | null>(null);
-  const [bgColor, setBgColor] = useState('#e8eaf6');
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
   const [classes, setClasses] = useState<ClassDef[]>(DEFAULT_CLASSES);
   const [currentClassId, setCurrentClassId] = useState<string>('cls-1');
@@ -43,32 +40,16 @@ export default function App() {
     if (currentClassId === id) setCurrentClassId('');
   }, [currentClassId]);
 
-  const handlePresetSelect = useCallback((id: string) => {
-    const preset = presets.find(p => p.id === id);
-    if (!preset) return;
-    setSelectedPresetId(id);
-    setBgColor(preset.bgColor);
-    setBgImage(null);
-    setGtBoxes(preset.gtBoxes.map(b => ({
-      ...b,
-      type: 'gt' as const,
-      classId: classes.find(c => c.name === b.label)?.id,
-    })));
-    setPredictBoxes([]);
-    setSelectedBoxId(null);
-  }, [classes]);
-
   const handleImageUpload = useCallback((file: File) => {
     const reader = new FileReader();
-    reader.onload = e => { setBgImage(e.target?.result as string); setSelectedPresetId(null); };
+    reader.onload = e => setBgImage(e.target?.result as string);
     reader.readAsDataURL(file);
   }, []);
 
   const handleAddBox = useCallback((geom: { x: number; y: number; width: number; height: number; type: 'gt' | 'predict' }) => {
     const cls = classes.find(c => c.id === currentClassId);
     const newBox: BoundingBox = {
-      id: uuidv4(),
-      ...geom,
+      id: uuidv4(), ...geom,
       label: cls?.name ?? 'unknown',
       classId: currentClassId || undefined,
       confidence: geom.type === 'predict' ? currentConfidence : undefined,
@@ -110,8 +91,7 @@ export default function App() {
           </div>
           <h1 className="text-2xl font-bold text-indigo-900 mb-2">mAP Visualizer</h1>
           <p className="text-sm text-gray-600 leading-relaxed">
-            このツールはバウンディングボックスの描画操作があるため、<br />
-            <strong>PC・タブレットでのご利用を推奨</strong>しています。
+            このツールは<strong>PC・タブレットでのご利用を推奨</strong>しています。
           </p>
         </div>
       </div>
@@ -123,49 +103,29 @@ export default function App() {
         <main className="flex-1 w-full px-4 py-6">
           <div className="mx-auto w-fit">
             <div className="flex gap-5 items-start">
-              {/* Canvas */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 shrink-0">
                 <Canvas
-                  width={CANVAS_W}
-                  height={CANVAS_H}
-                  gtBoxes={gtBoxes}
-                  predictBoxes={predictBoxes}
-                  mode={mode}
-                  bgColor={bgColor}
-                  bgImage={bgImage}
-                  iouMatrix={metrics.iouMatrix}
-                  iouThreshold={iouThreshold}
-                  selectedBoxId={selectedBoxId}
-                  onSelectBox={setSelectedBoxId}
-                  onAddBox={handleAddBox}
-                  onUpdateBox={handleUpdateBox}
-                  onDeleteBox={handleDeleteBox}
+                  width={CANVAS_W} height={CANVAS_H}
+                  gtBoxes={gtBoxes} predictBoxes={predictBoxes}
+                  mode={mode} bgColor="#e8eaf6" bgImage={bgImage}
+                  iouMatrix={metrics.iouMatrix} iouThreshold={iouThreshold}
+                  selectedBoxId={selectedBoxId} onSelectBox={setSelectedBoxId}
+                  onAddBox={handleAddBox} onUpdateBox={handleUpdateBox} onDeleteBox={handleDeleteBox}
                   classes={classes}
                 />
               </div>
 
-              {/* Sidebar */}
               <div className="w-72 shrink-0">
                 <Sidebar
-                  mode={mode}
-                  onModeChange={setMode}
-                  classes={classes}
-                  onAddClass={handleAddClass}
-                  onDeleteClass={handleDeleteClass}
-                  currentClassId={currentClassId}
-                  onCurrentClassChange={setCurrentClassId}
-                  currentConfidence={currentConfidence}
-                  onCurrentConfidenceChange={setCurrentConfidence}
-                  presets={presets}
-                  selectedPresetId={selectedPresetId}
-                  onPresetSelect={handlePresetSelect}
+                  mode={mode} onModeChange={setMode}
+                  classes={classes} onAddClass={handleAddClass} onDeleteClass={handleDeleteClass}
+                  currentClassId={currentClassId} onCurrentClassChange={setCurrentClassId}
+                  currentConfidence={currentConfidence} onCurrentConfidenceChange={setCurrentConfidence}
                   onImageUpload={handleImageUpload}
-                  iouThreshold={iouThreshold}
-                  onIouThresholdChange={setIouThreshold}
-                  gtBoxes={gtBoxes}
-                  onDeleteGT={handleDeleteBox}
+                  iouThreshold={iouThreshold} onIouThresholdChange={setIouThreshold}
+                  selectedBoxId={selectedBoxId}
+                  gtBoxes={gtBoxes} onDeleteGT={handleDeleteBox}
                   predictBoxes={predictBoxes}
-                  onConfidenceChange={(id, v) => handleUpdateBox(id, { confidence: v })}
                   onDeletePredict={handleDeleteBox}
                   onUpdateBox={handleUpdateBox}
                   metrics={metrics}
@@ -173,12 +133,11 @@ export default function App() {
               </div>
             </div>
 
-            {/* PR Curve */}
-            <div className="mt-5 bg-white rounded-xl shadow-sm border border-gray-200 p-6" style={{ width: CANVAS_W + 288 + 20 }}>
+            <div className="mt-5 bg-white rounded-xl shadow-sm border border-gray-200 p-6"
+              style={{ width: CANVAS_W + 288 + 20 }}>
               <PRCurveChart prCurve={metrics.prCurve} ap={metrics.ap} />
             </div>
 
-            {/* Explanation */}
             <div className="mt-5" style={{ width: CANVAS_W + 288 + 20 }}>
               <ExplanationSection />
             </div>

@@ -39,9 +39,14 @@ export default function Canvas({
 }: Props) {
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
+  const panLastPos = useRef({ x: 0, y: 0 });
+
   const [drawState, setDrawState] = useState<DrawState | null>(null);
   const [bgImageEl, setBgImageEl] = useState<HTMLImageElement | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const [shiftPressed, setShiftPressed] = useState(false);
 
+  // Load background image
   useEffect(() => {
     if (!bgImage) { setBgImageEl(null); return; }
     const img = new Image();
@@ -49,6 +54,7 @@ export default function Canvas({
     img.src = bgImage;
   }, [bgImage]);
 
+  // Attach transformer to selected node
   useEffect(() => {
     const tr = trRef.current;
     if (!tr) return;
@@ -61,8 +67,10 @@ export default function Canvas({
     tr.getLayer()?.batchDraw();
   }, [selectedBoxId]);
 
+  // Keyboard handlers
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftPressed(true);
       const t = e.target as HTMLElement;
       if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return;
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedBoxId) {
@@ -70,9 +78,25 @@ export default function Canvas({
         onDeleteBox(selectedBoxId);
       }
     };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') setShiftPressed(false);
+    };
     window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKey);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
   }, [selectedBoxId, onDeleteBox]);
+
+  // Prevent context menu on canvas
+  useEffect(() => {
+    const container = stageRef.current?.container();
+    if (!container) return;
+    const prevent = (e: Event) => e.preventDefault();
+    container.addEventListener('contextmenu', prevent);
+    return () => container.removeEventListener('contextmenu', prevent);
+  }, []);
 
   const isDrawMode = mode === 'gt-add' || mode === 'predict-add';
 
@@ -89,10 +113,7 @@ export default function Canvas({
     const stage = stageRef.current!;
     const oldScale = stage.scaleX();
     const pos = stage.getPointerPosition()!;
-    const pivot = {
-      x: (pos.x - stage.x()) / oldScale,
-      y: (pos.y - stage.y()) / oldScale,
-    };
+    const pivot = { x: (pos.x - stage.x()) / oldScale, y: (pos.y - stage.y()) / oldScale };
     const dir = e.evt.deltaY < 0 ? 1 : -1;
     const newScale = Math.max(0.2, Math.min(5, oldScale * (1 + dir * 0.12)));
     stage.scale({ x: newScale, y: newScale });
@@ -100,6 +121,15 @@ export default function Canvas({
   }, []);
 
   const handleMouseDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    // Right click → pan
+    if (e.evt.button === 2) {
+      e.evt.preventDefault();
+      setIsPanning(true);
+      panLastPos.current = { x: e.evt.clientX, y: e.evt.clientY };
+      return;
+    }
+    // Only left click for drawing
+    if (e.evt.button !== 0) return;
     if (!isDrawMode) return;
     const name = (e.target as Konva.Node).name();
     if (e.target !== e.target.getStage() && name !== 'bg') return;
@@ -107,13 +137,23 @@ export default function Canvas({
     setDrawState({ startX: p.x, startY: p.y, currentX: p.x, currentY: p.y });
   }, [isDrawMode, getCanvasPos]);
 
-  const handleMouseMove = useCallback(() => {
+  const handleMouseMove = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (isPanning) {
+      const stage = stageRef.current!;
+      const dx = e.evt.clientX - panLastPos.current.x;
+      const dy = e.evt.clientY - panLastPos.current.y;
+      stage.position({ x: stage.x() + dx, y: stage.y() + dy });
+      panLastPos.current = { x: e.evt.clientX, y: e.evt.clientY };
+      stage.batchDraw();
+      return;
+    }
     if (!drawState || !isDrawMode) return;
     const p = getCanvasPos();
     setDrawState(prev => prev ? { ...prev, currentX: p.x, currentY: p.y } : null);
-  }, [drawState, isDrawMode, getCanvasPos]);
+  }, [isPanning, drawState, isDrawMode, getCanvasPos]);
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (e.evt.button === 2) { setIsPanning(false); return; }
     if (!drawState || !isDrawMode) return;
     const x = Math.min(drawState.startX, drawState.currentX);
     const y = Math.min(drawState.startY, drawState.currentY);
@@ -126,6 +166,7 @@ export default function Canvas({
   }, [drawState, isDrawMode, mode, onAddBox]);
 
   const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (e.evt.button !== 0) return;
     if (isDrawMode) return;
     const name = (e.target as Konva.Node).name();
     if (e.target === e.target.getStage() || name === 'bg') onSelectBox(null);
@@ -171,27 +212,24 @@ export default function Canvas({
     onUpdateBox(id, { x: node.x(), y: node.y(), width: Math.max(10, node.width() * sx), height: Math.max(10, node.height() * sy) });
   };
 
+  const cursorStyle = isPanning ? 'grabbing' : isDrawMode ? 'crosshair' : 'default';
+
   return (
     <div className="flex flex-col items-start gap-2">
       <div className="flex items-center justify-between w-full mb-1">
         <p className="text-xs text-gray-400">
-          {isDrawMode ? 'ドラッグでボックスを描画' : 'クリックで選択 / Delete で削除'}
+          {isDrawMode
+            ? '左ドラッグ: 描画　右ドラッグ: 移動　Scroll: ズーム'
+            : '左クリック: 選択　右ドラッグ: 移動　Scroll: ズーム　Shift+リサイズ: 比率固定'}
         </p>
-        <button
-          onClick={handleResetZoom}
-          className="text-xs text-gray-500 border border-gray-200 rounded px-2 py-0.5 hover:bg-gray-100 transition"
-        >
+        <button onClick={handleResetZoom}
+          className="text-xs text-gray-500 border border-gray-200 rounded px-2 py-0.5 hover:bg-gray-100 transition">
           ズームリセット
         </button>
       </div>
-      <div
-        className="rounded-lg overflow-hidden border border-gray-200 shadow-inner"
-        style={{ width, height, cursor: isDrawMode ? 'crosshair' : 'default' }}
-      >
-        <Stage
-          ref={stageRef}
-          width={width}
-          height={height}
+      <div className="rounded-lg overflow-hidden border border-gray-200 shadow-inner"
+        style={{ width, height, cursor: cursorStyle }}>
+        <Stage ref={stageRef} width={width} height={height}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -199,11 +237,10 @@ export default function Canvas({
           onWheel={handleWheel}
         >
           <Layer>
-            {bgImageEl ? (
-              <KonvaImage image={bgImageEl} x={0} y={0} width={width} height={height} name="bg" />
-            ) : (
-              <Rect x={0} y={0} width={width} height={height} fill={bgColor} name="bg" />
-            )}
+            {bgImageEl
+              ? <KonvaImage image={bgImageEl} x={0} y={0} width={width} height={height} name="bg" />
+              : <Rect x={0} y={0} width={width} height={height} fill={bgColor} name="bg" />
+            }
 
             {gtBoxes.map(box => (
               <GTBoxShape key={box.id} box={box} isSelected={selectedBoxId === box.id}
@@ -233,7 +270,7 @@ export default function Canvas({
               />
             )}
 
-            <Transformer ref={trRef} rotateEnabled={false}
+            <Transformer ref={trRef} rotateEnabled={false} keepRatio={shiftPressed}
               boundBoxFunc={(oldBox, newBox) => (newBox.width < 10 || newBox.height < 10 ? oldBox : newBox)}
             />
           </Layer>
@@ -243,7 +280,6 @@ export default function Canvas({
   );
 }
 
-/* ---- Label badge (outside the box, top-left) ---- */
 function BoxLabel({ x, y, text, color }: { x: number; y: number; text: string; color: string }) {
   const fs = 10; const pad = 3;
   const w = text.length * 6.2 + pad * 2;
@@ -261,9 +297,7 @@ function BoxLabel({ x, y, text, color }: { x: number; y: number; text: string; c
 type MakeTransformEnd = (id: string, ref: React.RefObject<Konva.Rect | null>) => () => void;
 
 interface BoxShapeProps {
-  box: BoundingBox;
-  isSelected: boolean;
-  draggable: boolean;
+  box: BoundingBox; isSelected: boolean; draggable: boolean;
   onSelect: () => void;
   onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => void;
   onTransformEnd: MakeTransformEnd;
@@ -274,7 +308,6 @@ function GTBoxShape({ box, isSelected, draggable, onSelect, onDragEnd, onTransfo
   const ref = useRef<Konva.Rect>(null);
   const cls = classes.find(c => c.id === box.classId);
   const stroke = isSelected ? SEL_STROKE : (cls?.color ?? GT_STROKE);
-  const labelText = `GT ${box.label}`;
   return (
     <>
       <Rect ref={ref} id={box.id} x={box.x} y={box.y} width={box.width} height={box.height}
@@ -282,7 +315,7 @@ function GTBoxShape({ box, isSelected, draggable, onSelect, onDragEnd, onTransfo
         draggable={draggable} onClick={onSelect} onTap={onSelect}
         onDragEnd={onDragEnd} onTransformEnd={onTransformEnd(box.id, ref)}
       />
-      <BoxLabel x={box.x} y={box.y} text={labelText} color={stroke} />
+      <BoxLabel x={box.x} y={box.y} text={`GT ${box.label}`} color={stroke} />
     </>
   );
 }
@@ -292,12 +325,9 @@ interface PredictBoxShapeProps extends BoxShapeProps { isTP: boolean; }
 function PredictBoxShape({ box, isSelected, isTP, draggable, onSelect, onDragEnd, onTransformEnd, classes }: PredictBoxShapeProps) {
   const ref = useRef<Konva.Rect>(null);
   const cls = classes.find(c => c.id === box.classId);
-  const baseColor = isTP ? TP_STROKE : PRED_STROKE;
-  const stroke = isSelected ? SEL_STROKE : (cls ? (isTP ? TP_STROKE : cls.color) : baseColor);
+  const stroke = isSelected ? SEL_STROKE : (isTP ? TP_STROKE : (cls?.color ?? PRED_STROKE));
   const fill = isTP ? TP_FILL : PRED_FILL;
   const conf = (box.confidence ?? 1).toFixed(2);
-  const status = isTP ? 'TP' : 'FP';
-  const labelText = `${status} ${box.label} ${conf}`;
   return (
     <>
       <Rect ref={ref} id={box.id} x={box.x} y={box.y} width={box.width} height={box.height}
@@ -305,7 +335,7 @@ function PredictBoxShape({ box, isSelected, isTP, draggable, onSelect, onDragEnd
         draggable={draggable} onClick={onSelect} onTap={onSelect}
         onDragEnd={onDragEnd} onTransformEnd={onTransformEnd(box.id, ref)}
       />
-      <BoxLabel x={box.x} y={box.y} text={labelText} color={stroke} />
+      <BoxLabel x={box.x} y={box.y} text={`${isTP ? 'TP' : 'FP'} ${box.label} ${conf}`} color={stroke} />
     </>
   );
 }

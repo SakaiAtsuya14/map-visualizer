@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { BoundingBox, AppMode, SamplePreset, ClassDef } from '../types';
+import type { BoundingBox, AppMode, ClassDef } from '../types';
 import type { MetricsResult } from '../utils/metrics';
 
 const CLASS_COLORS = [
@@ -17,16 +17,13 @@ interface Props {
   onCurrentClassChange: (id: string) => void;
   currentConfidence: number;
   onCurrentConfidenceChange: (v: number) => void;
-  presets: SamplePreset[];
-  selectedPresetId: string | null;
-  onPresetSelect: (id: string) => void;
   onImageUpload: (f: File) => void;
   iouThreshold: number;
   onIouThresholdChange: (v: number) => void;
+  selectedBoxId: string | null;
   gtBoxes: BoundingBox[];
   onDeleteGT: (id: string) => void;
   predictBoxes: BoundingBox[];
-  onConfidenceChange: (id: string, v: number) => void;
   onDeletePredict: (id: string) => void;
   onUpdateBox: (id: string, updates: Partial<BoundingBox>) => void;
   metrics: MetricsResult;
@@ -35,9 +32,8 @@ interface Props {
 export default function Sidebar({
   mode, onModeChange, classes, onAddClass, onDeleteClass,
   currentClassId, onCurrentClassChange, currentConfidence, onCurrentConfidenceChange,
-  presets, selectedPresetId, onPresetSelect, onImageUpload,
-  iouThreshold, onIouThresholdChange,
-  gtBoxes, onDeleteGT, predictBoxes, onConfidenceChange, onDeletePredict, onUpdateBox,
+  onImageUpload, iouThreshold, onIouThresholdChange,
+  selectedBoxId, gtBoxes, onDeleteGT, predictBoxes, onDeletePredict, onUpdateBox,
   metrics,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -58,19 +54,19 @@ export default function Sidebar({
   const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
   const isDrawMode = mode === 'gt-add' || mode === 'predict-add';
 
-  const ClassSelector = ({ box }: { box: BoundingBox }) => (
-    <select
-      value={box.classId ?? ''}
-      onChange={e => onUpdateBox(box.id, {
-        classId: e.target.value || undefined,
-        label: classes.find(c => c.id === e.target.value)?.name ?? box.label,
-      })}
-      className="flex-1 text-xs border border-gray-200 rounded px-1.5 py-0.5 bg-white"
-    >
+  const selectedBox = selectedBoxId
+    ? [...gtBoxes, ...predictBoxes].find(b => b.id === selectedBoxId)
+    : null;
+
+  const clampConf = (v: number) => Math.max(0.01, Math.min(1.0, v));
+
+  const ClassSelect = ({ box }: { box: BoundingBox }) => (
+    <select value={box.classId ?? ''} onChange={e => onUpdateBox(box.id, {
+      classId: e.target.value || undefined,
+      label: classes.find(c => c.id === e.target.value)?.name ?? box.label,
+    })} className="flex-1 text-xs border border-gray-200 rounded px-1.5 py-1 bg-white">
       <option value="">未設定</option>
-      {classes.map(cls => (
-        <option key={cls.id} value={cls.id}>{cls.name}</option>
-      ))}
+      {classes.map(cls => <option key={cls.id} value={cls.id}>{cls.name}</option>)}
     </select>
   );
 
@@ -84,7 +80,7 @@ export default function Sidebar({
           {([
             { v: 'select', label: '選択', icon: '↖' },
             { v: 'gt-add', label: 'GT追加', icon: '+' },
-            { v: 'predict-add', label: 'Predict追加', icon: '+' },
+            { v: 'predict-add', label: 'Predict', icon: '+' },
           ] as { v: AppMode; label: string; icon: string }[]).map(({ v, label, icon }) => (
             <button key={v} onClick={() => onModeChange(v)}
               className={`flex flex-col items-center py-2 px-1 rounded-lg text-xs font-medium transition-all border
@@ -100,39 +96,41 @@ export default function Sidebar({
         </div>
       </section>
 
-      {/* Class Management */}
-      <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">クラス管理</h3>
-        <div className="space-y-1 mb-2 max-h-32 overflow-y-auto">
-          {classes.map(cls => (
-            <div key={cls.id} className="flex items-center gap-2 px-2 py-1 rounded-lg bg-gray-50">
-              <span className="w-3 h-3 rounded-sm shrink-0 border border-white shadow-sm" style={{ background: cls.color }} />
-              <span className="text-xs flex-1 font-medium text-gray-700">{cls.name}</span>
-              <button onClick={() => onDeleteClass(cls.id)}
-                className="text-gray-300 hover:text-red-500 transition-colors text-xs leading-none">✕</button>
+      {/* Selected box panel */}
+      {selectedBox && (
+        <section className="bg-white rounded-xl border-2 border-amber-400 p-3 shadow-sm">
+          <h3 className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-2">
+            選択中: {selectedBox.type === 'predict' ? 'Predict' : 'GT'} ボックス
+          </h3>
+          <div className="space-y-2.5">
+            <div>
+              <p className="text-xs text-gray-500 mb-1">クラス</p>
+              <ClassSelect box={selectedBox} />
             </div>
-          ))}
-        </div>
-        <div className="flex gap-1.5">
-          <input
-            type="text" placeholder="クラス名を入力"
-            value={newClassName}
-            onChange={e => setNewClassName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleAddClass()}
-            className="flex-1 text-xs border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-indigo-400"
-          />
-          <button onClick={handleAddClass}
-            className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded hover:bg-indigo-700 transition">
-            追加
-          </button>
-        </div>
-      </section>
+            {selectedBox.type === 'predict' && (
+              <div>
+                <p className="text-xs text-gray-500 mb-1">信頼度 (Confidence)</p>
+                <div className="flex items-center gap-2">
+                  <input type="range" min="0.01" max="1.0" step="0.01"
+                    value={selectedBox.confidence ?? 1}
+                    onChange={e => onUpdateBox(selectedBox.id, { confidence: clampConf(Number(e.target.value)) })}
+                    className="flex-1" />
+                  <input type="number" min="0.01" max="1.0" step="0.01"
+                    value={(selectedBox.confidence ?? 1).toFixed(2)}
+                    onChange={e => onUpdateBox(selectedBox.id, { confidence: clampConf(Number(e.target.value)) })}
+                    className="w-16 text-xs border border-gray-200 rounded px-1.5 py-1 text-right font-mono" />
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
-      {/* Drawing settings (class + confidence) */}
+      {/* Drawing settings */}
       {isDrawMode && (
         <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">描画設定</h3>
-          <p className="text-xs text-gray-400 mb-1.5">次に描くボックスのクラス</p>
+          <p className="text-xs text-gray-400 mb-1.5">クラス</p>
           <div className="flex flex-wrap gap-1 mb-2">
             {classes.map(cls => (
               <button key={cls.id} onClick={() => onCurrentClassChange(cls.id)}
@@ -149,41 +147,53 @@ export default function Sidebar({
           </div>
           {mode === 'predict-add' && (
             <div>
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-gray-500">Confidence</span>
-                <span className="font-mono font-semibold text-red-600">{currentConfidence.toFixed(2)}</span>
+              <p className="text-xs text-gray-400 mb-1">信頼度 (Confidence)</p>
+              <div className="flex items-center gap-2">
+                <input type="range" min="0.01" max="1.0" step="0.01"
+                  value={currentConfidence}
+                  onChange={e => onCurrentConfidenceChange(Number(e.target.value))}
+                  className="flex-1" />
+                <input type="number" min="0.01" max="1.0" step="0.01"
+                  value={currentConfidence.toFixed(2)}
+                  onChange={e => onCurrentConfidenceChange(clampConf(Number(e.target.value)))}
+                  className="w-16 text-xs border border-gray-200 rounded px-1.5 py-1 text-right font-mono" />
               </div>
-              <input type="range" min="0.01" max="1.0" step="0.01"
-                value={currentConfidence}
-                onChange={e => onCurrentConfidenceChange(Number(e.target.value))}
-                className="w-full" />
             </div>
           )}
         </section>
       )}
 
-      {/* Sample scenes */}
+      {/* Class Management */}
       <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">サンプルシーン</h3>
-        <div className="flex flex-col gap-1">
-          {presets.map(p => (
-            <button key={p.id} onClick={() => onPresetSelect(p.id)}
-              className={`text-left px-3 py-2 rounded-lg text-xs border transition-all font-medium ${
-                selectedPresetId === p.id
-                  ? 'border-indigo-400 bg-indigo-50 text-indigo-800'
-                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700'
-              }`}>
-              {p.name}
-            </button>
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">クラス管理</h3>
+        <div className="space-y-1 mb-2 max-h-28 overflow-y-auto">
+          {classes.map(cls => (
+            <div key={cls.id} className="flex items-center gap-2 px-2 py-1 rounded-lg bg-gray-50">
+              <span className="w-3 h-3 rounded-sm shrink-0 border border-white shadow-sm" style={{ background: cls.color }} />
+              <span className="text-xs flex-1 font-medium text-gray-700">{cls.name}</span>
+              <button onClick={() => onDeleteClass(cls.id)} className="text-gray-300 hover:text-red-500 transition-colors text-xs">✕</button>
+            </div>
           ))}
         </div>
-        <div className="mt-2 border-t border-gray-100 pt-2">
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
-          <button onClick={() => fileRef.current?.click()}
-            className="w-full py-1.5 text-xs text-gray-500 border border-dashed border-gray-300 rounded-lg hover:border-indigo-400 hover:text-indigo-600 transition">
-            画像をアップロード
-          </button>
+        <div className="flex gap-1.5">
+          <input type="text" placeholder="クラス名"
+            value={newClassName}
+            onChange={e => setNewClassName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAddClass()}
+            className="flex-1 text-xs border border-gray-200 rounded px-2 py-1.5 outline-none focus:border-indigo-400" />
+          <button onClick={handleAddClass}
+            className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded hover:bg-indigo-700 transition">追加</button>
         </div>
+      </section>
+
+      {/* Image upload */}
+      <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">背景画像</h3>
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+        <button onClick={() => fileRef.current?.click()}
+          className="w-full py-2 text-xs text-gray-500 border border-dashed border-gray-300 rounded-lg hover:border-indigo-400 hover:text-indigo-600 transition">
+          画像をアップロード
+        </button>
       </section>
 
       {/* IoU Threshold */}
@@ -193,64 +203,57 @@ export default function Sidebar({
           <input type="range" min="0.1" max="0.9" step="0.05"
             value={iouThreshold} onChange={e => onIouThresholdChange(Number(e.target.value))}
             className="flex-1" />
-          <span className="text-sm font-mono font-bold text-indigo-600 w-12 text-right">
-            {iouThreshold.toFixed(2)}
-          </span>
+          <span className="text-sm font-mono font-bold text-indigo-600 w-12 text-right">{iouThreshold.toFixed(2)}</span>
         </div>
         <p className="text-xs text-gray-400 mt-0.5">IoU ≥ この値 → TP と判定</p>
       </section>
 
-      {/* GT box list */}
+      {/* GT boxes */}
       <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-          GT ボックス（{gtBoxes.length}個）
-        </h3>
-        {gtBoxes.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center py-2">「GT追加」モードで描画</p>
-        ) : (
-          <div className="space-y-1.5 max-h-36 overflow-y-auto pr-0.5">
-            {gtBoxes.map((box, i) => (
-              <div key={box.id} className="flex items-center gap-1.5 px-2 py-1.5 bg-green-50 rounded-lg border border-green-100">
-                <span className="text-xs text-green-600 font-bold w-5 shrink-0">#{i+1}</span>
-                <ClassSelector box={box} />
-                <button onClick={() => onDeleteGT(box.id)}
-                  className="text-gray-300 hover:text-red-500 transition-colors text-xs shrink-0">✕</button>
-              </div>
-            ))}
-          </div>
-        )}
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">GT ボックス（{gtBoxes.length}個）</h3>
+        {gtBoxes.length === 0
+          ? <p className="text-xs text-gray-400 text-center py-2">「GT追加」モードで描画</p>
+          : (
+            <div className="space-y-1.5 max-h-36 overflow-y-auto">
+              {gtBoxes.map((box, i) => (
+                <div key={box.id} className="flex items-center gap-1.5 px-2 py-1.5 bg-green-50 rounded-lg border border-green-100">
+                  <span className="text-xs text-green-600 font-bold w-5 shrink-0">#{i + 1}</span>
+                  <ClassSelect box={box} />
+                  <button onClick={() => onDeleteGT(box.id)} className="text-gray-300 hover:text-red-500 transition-colors text-xs shrink-0">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
       </section>
 
-      {/* Predict box list */}
+      {/* Predict boxes */}
       <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-          Predict ボックス（{predictBoxes.length}個）
-        </h3>
-        {predictBoxes.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center py-2">「Predict追加」モードで描画</p>
-        ) : (
-          <div className="space-y-2 max-h-48 overflow-y-auto pr-0.5">
-            {[...predictBoxes].sort((a, b) => (b.confidence ?? 1) - (a.confidence ?? 1)).map((box, i) => (
-              <div key={box.id} className="px-2 py-1.5 bg-red-50 rounded-lg border border-red-100">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className="text-xs text-red-500 font-bold w-5 shrink-0">#{i+1}</span>
-                  <ClassSelector box={box} />
-                  <button onClick={() => onDeletePredict(box.id)}
-                    className="text-gray-300 hover:text-red-500 transition-colors text-xs shrink-0">✕</button>
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Predict ボックス（{predictBoxes.length}個）</h3>
+        {predictBoxes.length === 0
+          ? <p className="text-xs text-gray-400 text-center py-2">「Predict追加」モードで描画</p>
+          : (
+            <div className="space-y-2 max-h-52 overflow-y-auto">
+              {predictBoxes.map((box, i) => (
+                <div key={box.id} className="px-2 py-1.5 bg-red-50 rounded-lg border border-red-100">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-xs text-red-500 font-bold w-5 shrink-0">#{i + 1}</span>
+                    <ClassSelect box={box} />
+                    <button onClick={() => onDeletePredict(box.id)} className="text-gray-300 hover:text-red-500 transition-colors text-xs shrink-0">✕</button>
+                  </div>
+                  <div className="flex items-center gap-2 pl-6">
+                    <input type="range" min="0.01" max="1.0" step="0.01"
+                      value={box.confidence ?? 1}
+                      onChange={e => onUpdateBox(box.id, { confidence: clampConf(Number(e.target.value)) })}
+                      className="flex-1" />
+                    <input type="number" min="0.01" max="1.0" step="0.01"
+                      value={(box.confidence ?? 1).toFixed(2)}
+                      onChange={e => onUpdateBox(box.id, { confidence: clampConf(Number(e.target.value)) })}
+                      className="w-16 text-xs border border-gray-200 rounded px-1.5 py-0.5 text-right font-mono" />
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 pl-5">
-                  <input type="range" min="0.01" max="1.0" step="0.01"
-                    value={box.confidence ?? 1}
-                    onChange={e => onConfidenceChange(box.id, Number(e.target.value))}
-                    className="flex-1" />
-                  <span className="text-xs font-mono font-bold text-red-600 w-9 text-right">
-                    {(box.confidence ?? 1).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
       </section>
 
       {/* Metrics */}
