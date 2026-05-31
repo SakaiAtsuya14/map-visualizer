@@ -20,6 +20,9 @@ interface Props {
   onCurrentConfidenceChange: (v: number) => void;
   onImageUpload: (f: File) => void;
   onUploadBoxes: (file: File, type: 'gt' | 'predict') => void;
+  bgImageName: string | null;
+  gtFileName: string | null;
+  predictFileName: string | null;
   selectedBoxId: string | null;
   gtBoxes: BoundingBox[];
   onDeleteGT: (id: string) => void;
@@ -85,7 +88,7 @@ function DropZone({
 export default function Sidebar({
   mode, onModeChange, classes, onAddClass, onUpdateClass, onDeleteClass,
   currentClassId, onCurrentClassChange, currentConfidence, onCurrentConfidenceChange,
-  onImageUpload, onUploadBoxes,
+  onImageUpload, onUploadBoxes, bgImageName, gtFileName, predictFileName,
   selectedBoxId, gtBoxes, onDeleteGT, predictBoxes, onUpdateBox, onConvertBox,
   labelDisplay, onLabelDisplayChange,
 }: Props) {
@@ -332,13 +335,20 @@ export default function Sidebar({
             <p className="text-xs text-gray-400 mb-1">背景画像</p>
             <DropZone accept="image/*" colorScheme="indigo" label="画像をアップロード / ドラッグ＆ドロップ"
               onFile={onImageUpload} />
+            {bgImageName && <p className="text-[10px] text-gray-500 mt-1 mb-2 truncate" title={bgImageName}>📄 {bgImageName}</p>}
             <p className="text-xs text-gray-400 mt-3 mb-1">アノテーション / 予測結果</p>
-            <p className="text-xs text-gray-400 mb-1.5">YOLO .txt　/ COCO .json　/ Pascal VOC .xml</p>
+            <p className="text-[10px] text-gray-400 mb-1.5">YOLO .txt　/ COCO .json　/ Pascal VOC .xml</p>
             <div className="flex flex-col gap-1.5">
-              <DropZone accept=".txt,.json,.xml" colorScheme="green" label="GT 読み込み / ドラッグ＆ドロップ"
-                onFile={f => handleBoxFile(f, 'gt')} />
-              <DropZone accept=".txt,.json,.xml" colorScheme="red" label="Predict 読み込み / ドラッグ＆ドロップ"
-                onFile={f => handleBoxFile(f, 'predict')} />
+              <div>
+                <DropZone accept=".txt,.json,.xml" colorScheme="green" label="GT 読み込み / ドラッグ＆ドロップ"
+                  onFile={f => handleBoxFile(f, 'gt')} />
+                {gtFileName && <p className="text-[10px] text-gray-500 mt-1 truncate" title={gtFileName}>📄 {gtFileName}</p>}
+              </div>
+              <div className="mt-1">
+                <DropZone accept=".txt,.json,.xml" colorScheme="red" label="Predict 読み込み / ドラッグ＆ドロップ"
+                  onFile={f => handleBoxFile(f, 'predict')} />
+                {predictFileName && <p className="text-[10px] text-gray-500 mt-1 truncate" title={predictFileName}>📄 {predictFileName}</p>}
+              </div>
             </div>
             {uploadError && (
               <p className="text-xs text-red-500 mt-1.5 bg-red-50 rounded px-2 py-1">{uploadError}</p>

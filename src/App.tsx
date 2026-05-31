@@ -11,8 +11,6 @@ import { BoundingBox, AppMode, ClassDef, LabelDisplaySettings } from './types';
 import { calculateMetrics, buildIouMatrix, MetricsResult, EVAL_THRESHOLDS } from './utils/metrics';
 import { parseBoxFile } from './utils/fileFormats';
 
-const CANVAS_W = 880;
-const CANVAS_H = 580;
 
 const DEFAULT_CLASSES: ClassDef[] = [
   { id: 'cls-1', classId: 0, name: 'dog',    color: '#f97316' },
@@ -31,6 +29,11 @@ export default function App() {
   const [predictBoxes, setPredictBoxes] = useState<BoundingBox[]>([]);
   const [bgImage, setBgImage] = useState<string | null>(null);
   const [bgImageSize, setBgImageSize] = useState<{ w: number; h: number } | null>(null);
+  const [bgImageName, setBgImageName] = useState<string | null>(null);
+  const [gtFileName, setGtFileName] = useState<string | null>(null);
+  const [predictFileName, setPredictFileName] = useState<string | null>(null);
+  const [canvasW, setCanvasW] = useState(880);
+  const [canvasH, setCanvasH] = useState(580);
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
   const [classes, setClasses] = useState<ClassDef[]>(DEFAULT_CLASSES);
   const [currentClassId, setCurrentClassId] = useState<string>('cls-1');
@@ -71,8 +74,13 @@ export default function App() {
     reader.onload = e => {
       const dataUrl = e.target?.result as string;
       setBgImage(dataUrl);
+      setBgImageName(file.name);
       const img = new Image();
-      img.onload = () => setBgImageSize({ w: img.naturalWidth, h: img.naturalHeight });
+      img.onload = () => {
+        setBgImageSize({ w: img.naturalWidth, h: img.naturalHeight });
+        setCanvasW(img.naturalWidth);
+        setCanvasH(img.naturalHeight);
+      };
       img.src = dataUrl;
     };
     reader.readAsDataURL(file);
@@ -81,11 +89,14 @@ export default function App() {
   const handleUploadBoxes = useCallback(async (file: File, type: 'gt' | 'predict') => {
     const text = await file.text();
     const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-    const scaleX = bgImageSize ? CANVAS_W / bgImageSize.w : 1;
-    const scaleY = bgImageSize ? CANVAS_H / bgImageSize.h : 1;
+    const scaleX = bgImageSize ? canvasW / bgImageSize.w : 1;
+    const scaleY = bgImageSize ? canvasH / bgImageSize.h : 1;
     
+    if (type === 'gt') setGtFileName(file.name);
+    else setPredictFileName(file.name);
+
     // Parse boxes with empty classes to discard existing class definitions
-    const newBoxes = parseBoxFile(text, ext, type, [], CANVAS_W, CANVAS_H, scaleX, scaleY);
+    const newBoxes = parseBoxFile(text, ext, type, [], canvasW, canvasH, scaleX, scaleY);
     
     const nextGt = type === 'gt' ? newBoxes : gtBoxes;
     const nextPredict = type === 'predict' ? newBoxes : predictBoxes;
@@ -130,7 +141,7 @@ export default function App() {
     
     setGtBoxes(type === 'gt' ? updateBoxes(newBoxes) : updateBoxes(nextGt));
     setPredictBoxes(type === 'predict' ? updateBoxes(newBoxes) : updateBoxes(nextPredict));
-  }, [bgImageSize, gtBoxes, predictBoxes, currentClassId]);
+  }, [bgImageSize, gtBoxes, predictBoxes, currentClassId, canvasW, canvasH]);
 
   const handleAddBox = useCallback((geom: { x: number; y: number; width: number; height: number; type: 'gt' | 'predict' }) => {
     const cls = classes.find(c => c.id === currentClassId);
@@ -212,10 +223,16 @@ export default function App() {
             <div className="flex flex-col gap-5">
               {/* Top Row: Canvas & Sidebar */}
               <div className="flex gap-5 items-start">
-                <div className="shrink-0" style={{ width: CANVAS_W }}>
+                <div className="shrink-0" style={{ width: canvasW }}>
                   <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">キャンバスサイズ:</span>
+                      <input type="number" value={canvasW} onChange={e => setCanvasW(Number(e.target.value) || 1)} className="w-16 text-xs border border-gray-300 rounded px-1.5 py-1 text-center font-mono focus:border-indigo-400 outline-none" />
+                      <span className="text-gray-400 text-xs">×</span>
+                      <input type="number" value={canvasH} onChange={e => setCanvasH(Number(e.target.value) || 1)} className="w-16 text-xs border border-gray-300 rounded px-1.5 py-1 text-center font-mono focus:border-indigo-400 outline-none" />
+                    </div>
                     <Canvas
-                      width={CANVAS_W} height={CANVAS_H}
+                      width={canvasW} height={canvasH}
                       gtBoxes={gtBoxes} predictBoxes={predictBoxes}
                       mode={mode} bgColor="#e8eaf6" bgImage={bgImage}
                       iouMatrix={liveIouMatrix}
@@ -229,7 +246,7 @@ export default function App() {
 
                 <div 
                   className="w-72 shrink-0 overflow-y-auto" 
-                  style={{ maxHeight: CANVAS_H + 32 + 2 }} // match canvas container height (580 + 32px padding + 2px border)
+                  style={{ maxHeight: canvasH + 32 + 2 + 36 }} // match canvas container height (canvasH + 32px padding + 2px border + ~36px for size inputs)
                 >
                   <Sidebar
                     mode={mode} onModeChange={setMode}
@@ -241,6 +258,7 @@ export default function App() {
                     currentConfidence={currentConfidence} onCurrentConfidenceChange={setCurrentConfidence}
                     onImageUpload={handleImageUpload}
                     onUploadBoxes={handleUploadBoxes}
+                    bgImageName={bgImageName} gtFileName={gtFileName} predictFileName={predictFileName}
                     selectedBoxId={selectedBoxId}
                     gtBoxes={gtBoxes} onDeleteGT={handleDeleteBox}
                     predictBoxes={predictBoxes}
@@ -252,7 +270,7 @@ export default function App() {
               </div>
 
               {/* Bottom Sections: Full Width */}
-              <div className="flex flex-col gap-4" style={{ width: CANVAS_W + 20 + 288 }}>
+              <div className="flex flex-col gap-4" style={{ width: canvasW + 20 + 288 }}>
                 <MetricsPanel 
                   metrics={metrics} onCalculate={handleCalculate}
                   iouThreshold={prThreshold} onIouThresholdChange={setPrThreshold}
