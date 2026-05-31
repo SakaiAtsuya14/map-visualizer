@@ -232,7 +232,8 @@ export default function App() {
                       <input type="number" value={canvasH} onChange={e => setCanvasH(Number(e.target.value) || 1)} className="w-16 text-xs border border-gray-300 rounded px-1.5 py-1 text-center font-mono focus:border-indigo-400 outline-none" />
                     </div>
                     <Canvas
-                      width={canvasW} height={canvasH}
+                      width={880} height={580}
+                      contentWidth={canvasW} contentHeight={canvasH}
                       gtBoxes={gtBoxes} predictBoxes={predictBoxes}
                       mode={mode} bgColor="#e8eaf6" bgImage={bgImage}
                       iouMatrix={liveIouMatrix}

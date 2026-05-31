@@ -16,6 +16,8 @@ const SEL_STROKE = '#f59e0b';
 interface Props {
   width: number;
   height: number;
+  contentWidth: number;
+  contentHeight: number;
   gtBoxes: BoundingBox[];
   predictBoxes: BoundingBox[];
   mode: AppMode;
@@ -36,7 +38,7 @@ interface DrawState {
 }
 
 export default function Canvas({
-  width, height, gtBoxes, predictBoxes, mode, bgColor, bgImage,
+  width, height, contentWidth, contentHeight, gtBoxes, predictBoxes, mode, bgColor, bgImage,
   iouMatrix, selectedBoxId, onSelectBox, onAddBox, onUpdateBox, onDeleteBox, classes, labelDisplay,
 }: Props) {
   const stageRef = useRef<Konva.Stage>(null);
@@ -201,12 +203,21 @@ export default function Canvas({
     if (e.target === e.target.getStage() || name === 'bg') onSelectBox(null);
   }, [isDrawMode, onSelectBox]);
 
-  const handleResetZoom = () => {
-    const stage = stageRef.current!;
-    stage.scale({ x: 1, y: 1 });
-    stage.position({ x: 0, y: 0 });
-    stage.batchDraw();
-  };
+  const handleResetZoom = useCallback(() => {
+    const stage = stageRef.current;
+    if (stage) {
+      const scale = Math.min(width / contentWidth, height / contentHeight, 1);
+      stage.scale({ x: scale, y: scale });
+      const x = (width - contentWidth * scale) / 2;
+      const y = (height - contentHeight * scale) / 2;
+      stage.position({ x, y });
+      stage.batchDraw();
+    }
+  }, [width, height, contentWidth, contentHeight]);
+
+  useEffect(() => {
+    handleResetZoom();
+  }, [handleResetZoom, bgImageEl]);
 
   // Determine TP ids (class-aware, using fixed IoU=0.5 for visualization)
   const tpIds = new Set<string>();
@@ -258,8 +269,8 @@ export default function Canvas({
           ズームリセット
         </button>
       </div>
-      <div className="rounded-lg overflow-auto border border-gray-200 shadow-inner custom-scrollbar"
-        style={{ width: '100%', maxHeight: 580, cursor: cursorStyle, backgroundColor: bgColor }}>
+      <div className="rounded-lg overflow-hidden border border-gray-200 shadow-inner"
+        style={{ width, height, cursor: cursorStyle, backgroundColor: bgColor }}>
         <Stage ref={stageRef} width={width} height={height}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -269,8 +280,8 @@ export default function Canvas({
         >
           <Layer>
             {bgImageEl
-              ? <KonvaImage image={bgImageEl} x={0} y={0} width={width} height={height} name="bg" />
-              : <Rect x={0} y={0} width={width} height={height} fill={bgColor} name="bg" />
+              ? <KonvaImage image={bgImageEl} x={0} y={0} width={contentWidth} height={contentHeight} name="bg" />
+              : <Rect x={0} y={0} width={contentWidth} height={contentHeight} fill={bgColor} name="bg" />
             }
 
             {gtBoxes.map(box => (
