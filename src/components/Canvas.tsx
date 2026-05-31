@@ -179,7 +179,7 @@ export default function Canvas({
     stage.batchDraw();
   };
 
-  // Determine TP ids
+  // Determine TP ids (class-aware: only match predict to GT of same label)
   const tpIds = new Set<string>();
   if (predictBoxes.length > 0 && gtBoxes.length > 0) {
     const sorted = [...predictBoxes].sort((a, b) => (b.confidence ?? 1) - (a.confidence ?? 1));
@@ -188,6 +188,7 @@ export default function Canvas({
       let best = iouThreshold; let bestId: string | null = null;
       for (const gt of gtBoxes) {
         if (matched.has(gt.id)) continue;
+        if (gt.label !== pred.label) continue;
         const iou = iouMatrix.get(pred.id)?.get(gt.id) ?? 0;
         if (iou > best) { best = iou; bestId = gt.id; }
       }

@@ -27,6 +27,7 @@ interface Props {
   onDeletePredict: (id: string) => void;
   onUpdateBox: (id: string, updates: Partial<BoundingBox>) => void;
   metrics: MetricsResult;
+  onCalculate: () => void;
 }
 
 export default function Sidebar({
@@ -34,7 +35,7 @@ export default function Sidebar({
   currentClassId, onCurrentClassChange, currentConfidence, onCurrentConfidenceChange,
   onImageUpload, iouThreshold, onIouThresholdChange,
   selectedBoxId, gtBoxes, onDeleteGT, predictBoxes, onDeletePredict, onUpdateBox,
-  metrics,
+  metrics, onCalculate,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [newClassName, setNewClassName] = useState('');
@@ -258,7 +259,13 @@ export default function Sidebar({
 
       {/* Metrics */}
       <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">評価指標</h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">評価指標</h3>
+          <button onClick={onCalculate}
+            className="text-xs bg-indigo-600 text-white px-3 py-1 rounded-lg hover:bg-indigo-700 active:bg-indigo-800 transition font-semibold shadow-sm">
+            mAP を計算
+          </button>
+        </div>
         <div className="grid grid-cols-3 gap-1.5 mb-2">
           <MetricCard label="Precision" value={pct(metrics.precision)} color="blue" />
           <MetricCard label="Recall" value={pct(metrics.recall)} color="green" />
