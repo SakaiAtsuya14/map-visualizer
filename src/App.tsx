@@ -22,14 +22,13 @@ export default function App() {
   const [mode, setMode] = useState<AppMode>('predict-add');
   const [gtBoxes, setGtBoxes] = useState<BoundingBox[]>([]);
   const [predictBoxes, setPredictBoxes] = useState<BoundingBox[]>([]);
-  const [iouThreshold, setIouThreshold] = useState(0.5);
   const [bgImage, setBgImage] = useState<string | null>(null);
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
   const [classes, setClasses] = useState<ClassDef[]>(DEFAULT_CLASSES);
   const [currentClassId, setCurrentClassId] = useState<string>('cls-1');
   const [currentConfidence, setCurrentConfidence] = useState(0.9);
   const [metrics, setMetrics] = useState<MetricsResult>(() =>
-    calculateMetrics([], [], 0.5)
+    calculateMetrics([], [])
   );
 
   const handleAddClass = useCallback((name: string) => {
@@ -86,8 +85,8 @@ export default function App() {
   );
 
   const handleCalculate = useCallback(() => {
-    setMetrics(calculateMetrics(gtBoxes, predictBoxes, iouThreshold));
-  }, [gtBoxes, predictBoxes, iouThreshold]);
+    setMetrics(calculateMetrics(gtBoxes, predictBoxes));
+  }, [gtBoxes, predictBoxes]);
 
   return (
     <>
@@ -119,7 +118,7 @@ export default function App() {
                   width={CANVAS_W} height={CANVAS_H}
                   gtBoxes={gtBoxes} predictBoxes={predictBoxes}
                   mode={mode} bgColor="#e8eaf6" bgImage={bgImage}
-                  iouMatrix={liveIouMatrix} iouThreshold={iouThreshold}
+                  iouMatrix={liveIouMatrix}
                   selectedBoxId={selectedBoxId} onSelectBox={setSelectedBoxId}
                   onAddBox={handleAddBox} onUpdateBox={handleUpdateBox} onDeleteBox={handleDeleteBox}
                   classes={classes}
@@ -133,7 +132,6 @@ export default function App() {
                   currentClassId={currentClassId} onCurrentClassChange={setCurrentClassId}
                   currentConfidence={currentConfidence} onCurrentConfidenceChange={setCurrentConfidence}
                   onImageUpload={handleImageUpload}
-                  iouThreshold={iouThreshold} onIouThresholdChange={setIouThreshold}
                   selectedBoxId={selectedBoxId}
                   gtBoxes={gtBoxes} onDeleteGT={handleDeleteBox}
                   predictBoxes={predictBoxes}
@@ -147,7 +145,7 @@ export default function App() {
 
             <div className="mt-5 bg-white rounded-xl shadow-sm border border-gray-200 p-6"
               style={{ width: CANVAS_W + 288 + 20 }}>
-              <PRCurveChart prCurve={metrics.prCurve} ap={metrics.ap} />
+              <PRCurveChart prCurve={metrics.prCurve} ap={metrics.map50} />
             </div>
 
             <div className="mt-5" style={{ width: CANVAS_W + 288 + 20 }}>

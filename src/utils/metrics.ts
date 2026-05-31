@@ -5,11 +5,15 @@ export interface PRPoint {
   precision: number;
 }
 
+export const EVAL_THRESHOLDS = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95];
+
 export interface MetricsResult {
   precision: number;
   recall: number;
-  ap: number;
-  mAP: number;
+  map50: number;
+  map75: number;
+  map5095: number;
+  mapByThreshold: Record<string, number>;
   prCurve: PRPoint[];
   tp: number;
   fp: number;
@@ -45,31 +49,29 @@ export function buildIouMatrix(
   return m;
 }
 
-export function calculateMetrics(
+interface ThresholdResult {
+  mAP: number;
+  tp: number;
+  fp: number;
+  fn: number;
+  precision: number;
+  recall: number;
+  prCurve: PRPoint[];
+}
+
+function computeAtThreshold(
   gtBoxes: BoundingBox[],
   predictBoxes: BoundingBox[],
+  iouMatrix: Map<string, Map<string, number>>,
   iouThreshold: number,
-): MetricsResult {
-  const iouMatrix = buildIouMatrix(gtBoxes, predictBoxes);
-
-  if (predictBoxes.length === 0 || gtBoxes.length === 0) {
-    return {
-      precision: predictBoxes.length === 0 ? 1 : 0,
-      recall: 0, ap: 0, mAP: 0, prCurve: [],
-      tp: 0, fp: predictBoxes.length, fn: gtBoxes.length,
-      iouMatrix,
-    };
-  }
-
-  // Per-class AP (PASCAL VOC style)
-  const gtLabels = [...new Set(gtBoxes.map(b => b.label))];
+): ThresholdResult {
+  const gtLabels = [...new Set(gtBoxes.filter(b => b.label).map(b => b.label))];
   const classAPs: number[] = [];
   let totalTP = 0, totalFP = 0, totalFN = 0;
   const allPRPoints: PRPoint[] = [];
 
   for (const label of gtLabels) {
     const classGTs = gtBoxes.filter(b => b.label === label);
-    // Only consider same-class predictions, sorted by confidence desc
     const classPreds = [...predictBoxes.filter(b => b.label === label)]
       .sort((a, b) => (b.confidence ?? 1) - (a.confidence ?? 1));
 
@@ -102,18 +104,62 @@ export function calculateMetrics(
     allPRPoints.push(...classPR);
   }
 
-  // Predictions of classes with no GT boxes → all FP (not in mAP average)
   const labelsWithGT = new Set(gtLabels);
-  totalFP += predictBoxes.filter(b => !labelsWithGT.has(b.label)).length;
+  totalFP += predictBoxes.filter(b => !b.label || !labelsWithGT.has(b.label)).length;
 
   const mAP = classAPs.length > 0
     ? classAPs.reduce((a, b) => a + b, 0) / classAPs.length
     : 0;
   const precision = totalTP + totalFP > 0 ? totalTP / (totalTP + totalFP) : 0;
-  const recall = gtBoxes.length > 0 ? totalTP / gtBoxes.length : 0;
+  const recall = gtBoxes.filter(b => b.label).length > 0 ? totalTP / gtBoxes.filter(b => b.label).length : 0;
   const prCurve = allPRPoints.sort((a, b) => a.recall - b.recall);
 
-  return { precision, recall, ap: mAP, mAP, prCurve, tp: totalTP, fp: totalFP, fn: totalFN, iouMatrix };
+  return { mAP, tp: totalTP, fp: totalFP, fn: totalFN, precision, recall, prCurve };
+}
+
+export function calculateMetrics(
+  gtBoxes: BoundingBox[],
+  predictBoxes: BoundingBox[],
+): MetricsResult {
+  const iouMatrix = buildIouMatrix(gtBoxes, predictBoxes);
+  const emptyThresholds = Object.fromEntries(EVAL_THRESHOLDS.map(t => [t.toFixed(2), 0]));
+
+  if (predictBoxes.length === 0 || gtBoxes.length === 0) {
+    return {
+      precision: predictBoxes.length === 0 ? 1 : 0,
+      recall: 0,
+      map50: 0, map75: 0, map5095: 0,
+      mapByThreshold: emptyThresholds,
+      prCurve: [],
+      tp: 0, fp: predictBoxes.length, fn: gtBoxes.length,
+      iouMatrix,
+    };
+  }
+
+  const mapByThreshold: Record<string, number> = {};
+  let at50: ThresholdResult | null = null;
+
+  for (const t of EVAL_THRESHOLDS) {
+    const res = computeAtThreshold(gtBoxes, predictBoxes, iouMatrix, t);
+    mapByThreshold[t.toFixed(2)] = res.mAP;
+    if (t === 0.5) at50 = res;
+  }
+
+  const map5095 = EVAL_THRESHOLDS.reduce((sum, t) => sum + mapByThreshold[t.toFixed(2)], 0) / EVAL_THRESHOLDS.length;
+
+  return {
+    precision: at50!.precision,
+    recall: at50!.recall,
+    map50: mapByThreshold['0.50'],
+    map75: mapByThreshold['0.75'],
+    map5095,
+    mapByThreshold,
+    prCurve: at50!.prCurve,
+    tp: at50!.tp,
+    fp: at50!.fp,
+    fn: at50!.fn,
+    iouMatrix,
+  };
 }
 
 function computeAP(prCurve: PRPoint[]): number {

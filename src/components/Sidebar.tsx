@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { BoundingBox, AppMode, ClassDef } from '../types';
 import type { MetricsResult } from '../utils/metrics';
+import { EVAL_THRESHOLDS } from '../utils/metrics';
 
 const CLASS_COLORS = [
   '#ef4444','#f97316','#eab308','#22c55e',
@@ -18,8 +19,6 @@ interface Props {
   currentConfidence: number;
   onCurrentConfidenceChange: (v: number) => void;
   onImageUpload: (f: File) => void;
-  iouThreshold: number;
-  onIouThresholdChange: (v: number) => void;
   selectedBoxId: string | null;
   gtBoxes: BoundingBox[];
   onDeleteGT: (id: string) => void;
@@ -33,7 +32,7 @@ interface Props {
 export default function Sidebar({
   mode, onModeChange, classes, onAddClass, onDeleteClass,
   currentClassId, onCurrentClassChange, currentConfidence, onCurrentConfidenceChange,
-  onImageUpload, iouThreshold, onIouThresholdChange,
+  onImageUpload,
   selectedBoxId, gtBoxes, onDeleteGT, predictBoxes, onDeletePredict, onUpdateBox,
   metrics, onCalculate,
 }: Props) {
@@ -197,18 +196,6 @@ export default function Sidebar({
         </button>
       </section>
 
-      {/* IoU Threshold */}
-      <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">IoU 閾値</h3>
-        <div className="flex items-center gap-2">
-          <input type="range" min="0.1" max="0.9" step="0.05"
-            value={iouThreshold} onChange={e => onIouThresholdChange(Number(e.target.value))}
-            className="flex-1" />
-          <span className="text-sm font-mono font-bold text-indigo-600 w-12 text-right">{iouThreshold.toFixed(2)}</span>
-        </div>
-        <p className="text-xs text-gray-400 mt-0.5">IoU ≥ この値 → TP と判定</p>
-      </section>
-
       {/* GT boxes */}
       <section className="bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
         <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">GT ボックス（{gtBoxes.length}個）</h3>
@@ -266,20 +253,48 @@ export default function Sidebar({
             mAP を計算
           </button>
         </div>
-        <div className="grid grid-cols-3 gap-1.5 mb-2">
-          <MetricCard label="Precision" value={pct(metrics.precision)} color="blue" />
-          <MetricCard label="Recall" value={pct(metrics.recall)} color="green" />
-          <MetricCard label="AP" value={pct(metrics.ap)} color="purple" />
-        </div>
+
+        {/* mAP@50:95 primary */}
         <div className="bg-indigo-50 rounded-lg p-2.5 text-center mb-2">
-          <div className="text-xs text-indigo-500 font-semibold uppercase">mAP</div>
-          <div className="text-2xl font-bold text-indigo-700">{pct(metrics.mAP)}</div>
+          <div className="text-xs text-indigo-500 font-semibold uppercase tracking-wide">mAP@50:95</div>
+          <div className="text-2xl font-bold text-indigo-700">{pct(metrics.map5095)}</div>
         </div>
+
+        {/* mAP@50 and mAP@75 */}
+        <div className="grid grid-cols-2 gap-1.5 mb-2">
+          <MetricCard label="mAP@50" value={pct(metrics.map50)} color="blue" />
+          <MetricCard label="mAP@75" value={pct(metrics.map75)} color="purple" />
+        </div>
+
+        {/* All thresholds */}
+        <div className="bg-gray-50 rounded-lg p-2 mb-2">
+          <p className="text-xs text-gray-400 font-semibold mb-1.5">各IoU閾値のmAP</p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5">
+            {EVAL_THRESHOLDS.map(t => {
+              const key = t.toFixed(2);
+              return (
+                <div key={key} className="flex justify-between text-xs">
+                  <span className="text-gray-500">IoU {key}</span>
+                  <span className="font-mono font-semibold text-gray-700">{pct(metrics.mapByThreshold[key] ?? 0)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Precision / Recall at @50 */}
+        <div className="grid grid-cols-2 gap-1.5 mb-2">
+          <MetricCard label="Precision" value={pct(metrics.precision)} color="green" />
+          <MetricCard label="Recall" value={pct(metrics.recall)} color="green" />
+        </div>
+
+        {/* TP / FP / FN */}
         <div className="grid grid-cols-3 gap-1 text-center">
           <StatusBadge label="TP" value={metrics.tp} color="blue" />
           <StatusBadge label="FP" value={metrics.fp} color="red" />
           <StatusBadge label="FN" value={metrics.fn} color="yellow" />
         </div>
+        <p className="text-xs text-gray-400 mt-1.5 text-center">Precision / Recall / TP / FP / FN は IoU=0.50</p>
       </section>
     </div>
   );
