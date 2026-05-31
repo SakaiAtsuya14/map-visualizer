@@ -2,16 +2,22 @@ import { useState, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import Header from './components/Header';
 import Canvas from './components/Canvas';
-import Sidebar from './components/Sidebar';
+import Sidebar, { CLASS_COLORS } from './components/Sidebar';
 import PRCurveChart from './components/PRCurveChart';
 import ExplanationSection from './components/ExplanationSection';
 import Footer from './components/Footer';
-import { BoundingBox, AppMode } from './types';
+import { BoundingBox, AppMode, ClassDef } from './types';
 import { calculateMetrics } from './utils/metrics';
 import { presets } from './data/presets';
 
-const CANVAS_W = 640;
-const CANVAS_H = 480;
+const CANVAS_W = 880;
+const CANVAS_H = 580;
+
+const DEFAULT_CLASSES: ClassDef[] = [
+  { id: 'cls-1', name: 'dog',    color: '#f97316' },
+  { id: 'cls-2', name: 'cat',    color: '#8b5cf6' },
+  { id: 'cls-3', name: 'person', color: '#06b6d4' },
+];
 
 export default function App() {
   const [mode, setMode] = useState<AppMode>('predict-add');
@@ -22,6 +28,20 @@ export default function App() {
   const [bgImage, setBgImage] = useState<string | null>(null);
   const [bgColor, setBgColor] = useState('#e8eaf6');
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
+  const [classes, setClasses] = useState<ClassDef[]>(DEFAULT_CLASSES);
+  const [currentClassId, setCurrentClassId] = useState<string>('cls-1');
+  const [currentConfidence, setCurrentConfidence] = useState(0.9);
+
+  const handleAddClass = useCallback((name: string) => {
+    const id = uuidv4();
+    const color = CLASS_COLORS[classes.length % CLASS_COLORS.length];
+    setClasses(prev => [...prev, { id, name, color }]);
+  }, [classes.length]);
+
+  const handleDeleteClass = useCallback((id: string) => {
+    setClasses(prev => prev.filter(c => c.id !== id));
+    if (currentClassId === id) setCurrentClassId('');
+  }, [currentClassId]);
 
   const handlePresetSelect = useCallback((id: string) => {
     const preset = presets.find(p => p.id === id);
@@ -29,46 +49,45 @@ export default function App() {
     setSelectedPresetId(id);
     setBgColor(preset.bgColor);
     setBgImage(null);
-    setGtBoxes(preset.gtBoxes.map(b => ({ ...b, type: 'gt' as const })));
+    setGtBoxes(preset.gtBoxes.map(b => ({
+      ...b,
+      type: 'gt' as const,
+      classId: classes.find(c => c.name === b.label)?.id,
+    })));
     setPredictBoxes([]);
     setSelectedBoxId(null);
-  }, []);
+  }, [classes]);
 
   const handleImageUpload = useCallback((file: File) => {
     const reader = new FileReader();
-    reader.onload = e => {
-      setBgImage(e.target?.result as string);
-      setSelectedPresetId(null);
-    };
+    reader.onload = e => { setBgImage(e.target?.result as string); setSelectedPresetId(null); };
     reader.readAsDataURL(file);
   }, []);
 
-  const handleAddBox = useCallback((box: Omit<BoundingBox, 'id'>) => {
-    const newBox: BoundingBox = { ...box, id: uuidv4() };
-    if (box.type === 'gt') {
-      setGtBoxes(prev => [...prev, newBox]);
-    } else {
-      setPredictBoxes(prev => [...prev, newBox]);
-    }
+  const handleAddBox = useCallback((geom: { x: number; y: number; width: number; height: number; type: 'gt' | 'predict' }) => {
+    const cls = classes.find(c => c.id === currentClassId);
+    const newBox: BoundingBox = {
+      id: uuidv4(),
+      ...geom,
+      label: cls?.name ?? 'unknown',
+      classId: currentClassId || undefined,
+      confidence: geom.type === 'predict' ? currentConfidence : undefined,
+    };
+    if (geom.type === 'gt') setGtBoxes(prev => [...prev, newBox]);
+    else setPredictBoxes(prev => [...prev, newBox]);
     setSelectedBoxId(newBox.id);
-  }, []);
+  }, [classes, currentClassId, currentConfidence]);
 
   const handleUpdateBox = useCallback((id: string, updates: Partial<BoundingBox>) => {
-    setGtBoxes(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
-    setPredictBoxes(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
-  }, []);
+    const enriched = updates.classId !== undefined
+      ? { ...updates, label: classes.find(c => c.id === updates.classId)?.name ?? updates.label ?? '' }
+      : updates;
+    setGtBoxes(prev => prev.map(b => b.id === id ? { ...b, ...enriched } : b));
+    setPredictBoxes(prev => prev.map(b => b.id === id ? { ...b, ...enriched } : b));
+  }, [classes]);
 
   const handleDeleteBox = useCallback((id: string) => {
     setGtBoxes(prev => prev.filter(b => b.id !== id));
-    setPredictBoxes(prev => prev.filter(b => b.id !== id));
-    if (selectedBoxId === id) setSelectedBoxId(null);
-  }, [selectedBoxId]);
-
-  const handleConfidenceChange = useCallback((id: string, confidence: number) => {
-    setPredictBoxes(prev => prev.map(b => b.id === id ? { ...b, confidence } : b));
-  }, []);
-
-  const handleDeletePredict = useCallback((id: string) => {
     setPredictBoxes(prev => prev.filter(b => b.id !== id));
     if (selectedBoxId === id) setSelectedBoxId(null);
   }, [selectedBoxId]);
@@ -97,15 +116,15 @@ export default function App() {
         </div>
       </div>
 
-      {/* Desktop app */}
+      {/* Desktop */}
       <div className="hidden md:flex flex-col min-h-screen bg-gray-50">
         <Header />
 
-        <main className="flex-1 max-w-screen-xl mx-auto w-full px-4 py-6">
-          <div className="flex gap-5 items-start">
-            {/* Canvas */}
-            <div className="shrink-0">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <main className="flex-1 w-full px-4 py-6">
+          <div className="mx-auto w-fit">
+            <div className="flex gap-5 items-start">
+              {/* Canvas */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 shrink-0">
                 <Canvas
                   width={CANVAS_W}
                   height={CANVAS_H}
@@ -121,37 +140,48 @@ export default function App() {
                   onAddBox={handleAddBox}
                   onUpdateBox={handleUpdateBox}
                   onDeleteBox={handleDeleteBox}
+                  classes={classes}
+                />
+              </div>
+
+              {/* Sidebar */}
+              <div className="w-72 shrink-0">
+                <Sidebar
+                  mode={mode}
+                  onModeChange={setMode}
+                  classes={classes}
+                  onAddClass={handleAddClass}
+                  onDeleteClass={handleDeleteClass}
+                  currentClassId={currentClassId}
+                  onCurrentClassChange={setCurrentClassId}
+                  currentConfidence={currentConfidence}
+                  onCurrentConfidenceChange={setCurrentConfidence}
+                  presets={presets}
+                  selectedPresetId={selectedPresetId}
+                  onPresetSelect={handlePresetSelect}
+                  onImageUpload={handleImageUpload}
+                  iouThreshold={iouThreshold}
+                  onIouThresholdChange={setIouThreshold}
+                  gtBoxes={gtBoxes}
+                  onDeleteGT={handleDeleteBox}
+                  predictBoxes={predictBoxes}
+                  onConfidenceChange={(id, v) => handleUpdateBox(id, { confidence: v })}
+                  onDeletePredict={handleDeleteBox}
+                  onUpdateBox={handleUpdateBox}
+                  metrics={metrics}
                 />
               </div>
             </div>
 
-            {/* Sidebar */}
-            <div className="w-72 shrink-0">
-              <Sidebar
-                mode={mode}
-                onModeChange={setMode}
-                presets={presets}
-                selectedPresetId={selectedPresetId}
-                onPresetSelect={handlePresetSelect}
-                onImageUpload={handleImageUpload}
-                iouThreshold={iouThreshold}
-                onIouThresholdChange={setIouThreshold}
-                predictBoxes={predictBoxes}
-                onConfidenceChange={handleConfidenceChange}
-                onDeletePredict={handleDeletePredict}
-                metrics={metrics}
-              />
+            {/* PR Curve */}
+            <div className="mt-5 bg-white rounded-xl shadow-sm border border-gray-200 p-6" style={{ width: CANVAS_W + 288 + 20 }}>
+              <PRCurveChart prCurve={metrics.prCurve} ap={metrics.ap} />
             </div>
-          </div>
 
-          {/* PR Curve */}
-          <div className="mt-5 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <PRCurveChart prCurve={metrics.prCurve} ap={metrics.ap} />
-          </div>
-
-          {/* Explanation */}
-          <div className="mt-5">
-            <ExplanationSection />
+            {/* Explanation */}
+            <div className="mt-5" style={{ width: CANVAS_W + 288 + 20 }}>
+              <ExplanationSection />
+            </div>
           </div>
         </main>
 

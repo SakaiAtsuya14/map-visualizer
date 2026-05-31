@@ -1,14 +1,14 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Stage, Layer, Rect, Text, Transformer, Image as KonvaImage } from 'react-konva';
 import Konva from 'konva';
-import type { BoundingBox, AppMode } from '../types';
+import type { BoundingBox, AppMode, ClassDef } from '../types';
 
 const GT_STROKE = '#16a34a';
-const GT_FILL = 'rgba(22, 163, 74, 0.12)';
+const GT_FILL = 'rgba(22, 163, 74, 0.10)';
 const PRED_STROKE = '#dc2626';
-const PRED_FILL = 'rgba(220, 38, 38, 0.12)';
+const PRED_FILL = 'rgba(220, 38, 38, 0.10)';
 const TP_STROKE = '#2563eb';
-const TP_FILL = 'rgba(37, 99, 235, 0.12)';
+const TP_FILL = 'rgba(37, 99, 235, 0.10)';
 const SEL_STROKE = '#f59e0b';
 
 interface Props {
@@ -23,21 +23,19 @@ interface Props {
   iouThreshold: number;
   selectedBoxId: string | null;
   onSelectBox: (id: string | null) => void;
-  onAddBox: (box: Omit<BoundingBox, 'id'>) => void;
+  onAddBox: (geom: { x: number; y: number; width: number; height: number; type: 'gt' | 'predict' }) => void;
   onUpdateBox: (id: string, updates: Partial<BoundingBox>) => void;
   onDeleteBox: (id: string) => void;
+  classes: ClassDef[];
 }
 
 interface DrawState {
-  startX: number;
-  startY: number;
-  currentX: number;
-  currentY: number;
+  startX: number; startY: number; currentX: number; currentY: number;
 }
 
 export default function Canvas({
   width, height, gtBoxes, predictBoxes, mode, bgColor, bgImage,
-  iouMatrix, iouThreshold, selectedBoxId, onSelectBox, onAddBox, onUpdateBox, onDeleteBox,
+  iouMatrix, iouThreshold, selectedBoxId, onSelectBox, onAddBox, onUpdateBox, onDeleteBox, classes,
 }: Props) {
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
@@ -56,8 +54,7 @@ export default function Canvas({
     if (!tr) return;
     if (selectedBoxId) {
       const node = stageRef.current?.findOne('#' + selectedBoxId);
-      if (node) { tr.nodes([node]); }
-      else { tr.nodes([]); }
+      tr.nodes(node ? [node] : []);
     } else {
       tr.nodes([]);
     }
@@ -67,7 +64,7 @@ export default function Canvas({
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') return;
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return;
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedBoxId) {
         e.preventDefault();
         onDeleteBox(selectedBoxId);
@@ -79,22 +76,42 @@ export default function Canvas({
 
   const isDrawMode = mode === 'gt-add' || mode === 'predict-add';
 
+  const getCanvasPos = useCallback(() => {
+    const stage = stageRef.current!;
+    const pos = stage.getPointerPosition()!;
+    const scale = stage.scaleX();
+    const sp = stage.position();
+    return { x: (pos.x - sp.x) / scale, y: (pos.y - sp.y) / scale };
+  }, []);
+
+  const handleWheel = useCallback((e: Konva.KonvaEventObject<WheelEvent>) => {
+    e.evt.preventDefault();
+    const stage = stageRef.current!;
+    const oldScale = stage.scaleX();
+    const pos = stage.getPointerPosition()!;
+    const pivot = {
+      x: (pos.x - stage.x()) / oldScale,
+      y: (pos.y - stage.y()) / oldScale,
+    };
+    const dir = e.evt.deltaY < 0 ? 1 : -1;
+    const newScale = Math.max(0.2, Math.min(5, oldScale * (1 + dir * 0.12)));
+    stage.scale({ x: newScale, y: newScale });
+    stage.position({ x: pos.x - pivot.x * newScale, y: pos.y - pivot.y * newScale });
+  }, []);
+
   const handleMouseDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     if (!isDrawMode) return;
     const name = (e.target as Konva.Node).name();
-    const isStage = e.target === e.target.getStage();
-    if (!isStage && name !== 'bg') return;
-    const pos = stageRef.current?.getPointerPosition();
-    if (!pos) return;
-    setDrawState({ startX: pos.x, startY: pos.y, currentX: pos.x, currentY: pos.y });
-  }, [isDrawMode]);
+    if (e.target !== e.target.getStage() && name !== 'bg') return;
+    const p = getCanvasPos();
+    setDrawState({ startX: p.x, startY: p.y, currentX: p.x, currentY: p.y });
+  }, [isDrawMode, getCanvasPos]);
 
   const handleMouseMove = useCallback(() => {
     if (!drawState || !isDrawMode) return;
-    const pos = stageRef.current?.getPointerPosition();
-    if (!pos) return;
-    setDrawState(prev => prev ? { ...prev, currentX: pos.x, currentY: pos.y } : null);
-  }, [drawState, isDrawMode]);
+    const p = getCanvasPos();
+    setDrawState(prev => prev ? { ...prev, currentX: p.x, currentY: p.y } : null);
+  }, [drawState, isDrawMode, getCanvasPos]);
 
   const handleMouseUp = useCallback(() => {
     if (!drawState || !isDrawMode) return;
@@ -103,12 +120,7 @@ export default function Canvas({
     const w = Math.abs(drawState.currentX - drawState.startX);
     const h = Math.abs(drawState.currentY - drawState.startY);
     if (w > 10 && h > 10) {
-      onAddBox({
-        x, y, width: w, height: h,
-        label: 'object',
-        type: mode === 'gt-add' ? 'gt' : 'predict',
-        confidence: mode === 'predict-add' ? 0.9 : undefined,
-      });
+      onAddBox({ x, y, width: w, height: h, type: mode === 'gt-add' ? 'gt' : 'predict' });
     }
     setDrawState(null);
   }, [drawState, isDrawMode, mode, onAddBox]);
@@ -116,19 +128,23 @@ export default function Canvas({
   const handleStageClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     if (isDrawMode) return;
     const name = (e.target as Konva.Node).name();
-    if (e.target === e.target.getStage() || name === 'bg') {
-      onSelectBox(null);
-    }
+    if (e.target === e.target.getStage() || name === 'bg') onSelectBox(null);
   }, [isDrawMode, onSelectBox]);
 
-  // Determine TP predict boxes
+  const handleResetZoom = () => {
+    const stage = stageRef.current!;
+    stage.scale({ x: 1, y: 1 });
+    stage.position({ x: 0, y: 0 });
+    stage.batchDraw();
+  };
+
+  // Determine TP ids
   const tpIds = new Set<string>();
   if (predictBoxes.length > 0 && gtBoxes.length > 0) {
     const sorted = [...predictBoxes].sort((a, b) => (b.confidence ?? 1) - (a.confidence ?? 1));
     const matched = new Set<string>();
     for (const pred of sorted) {
-      let best = iouThreshold;
-      let bestId: string | null = null;
+      let best = iouThreshold; let bestId: string | null = null;
       for (const gt of gtBoxes) {
         if (matched.has(gt.id)) continue;
         const iou = iouMatrix.get(pred.id)?.get(gt.id) ?? 0;
@@ -148,26 +164,29 @@ export default function Canvas({
   const makeDragEnd = (id: string) => (e: Konva.KonvaEventObject<DragEvent>) => {
     onUpdateBox(id, { x: e.target.x(), y: e.target.y() });
   };
-
   const makeTransformEnd = (id: string, ref: React.RefObject<Konva.Rect | null>) => () => {
-    const node = ref.current;
-    if (!node) return;
-    const scaleX = node.scaleX();
-    const scaleY = node.scaleY();
-    node.scaleX(1);
-    node.scaleY(1);
-    onUpdateBox(id, {
-      x: node.x(), y: node.y(),
-      width: Math.max(10, node.width() * scaleX),
-      height: Math.max(10, node.height() * scaleY),
-    });
+    const node = ref.current; if (!node) return;
+    const sx = node.scaleX(); const sy = node.scaleY();
+    node.scaleX(1); node.scaleY(1);
+    onUpdateBox(id, { x: node.x(), y: node.y(), width: Math.max(10, node.width() * sx), height: Math.max(10, node.height() * sy) });
   };
 
   return (
     <div className="flex flex-col items-start gap-2">
+      <div className="flex items-center justify-between w-full mb-1">
+        <p className="text-xs text-gray-400">
+          {isDrawMode ? 'ドラッグでボックスを描画' : 'クリックで選択 / Delete で削除'}
+        </p>
+        <button
+          onClick={handleResetZoom}
+          className="text-xs text-gray-500 border border-gray-200 rounded px-2 py-0.5 hover:bg-gray-100 transition"
+        >
+          ズームリセット
+        </button>
+      </div>
       <div
         className="rounded-lg overflow-hidden border border-gray-200 shadow-inner"
-        style={{ cursor: isDrawMode ? 'crosshair' : 'default' }}
+        style={{ width, height, cursor: isDrawMode ? 'crosshair' : 'default' }}
       >
         <Stage
           ref={stageRef}
@@ -177,79 +196,67 @@ export default function Canvas({
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onClick={handleStageClick}
+          onWheel={handleWheel}
         >
           <Layer>
-            {/* Background */}
             {bgImageEl ? (
-              <KonvaImage
-                image={bgImageEl}
-                x={0} y={0} width={width} height={height}
-                name="bg"
-              />
+              <KonvaImage image={bgImageEl} x={0} y={0} width={width} height={height} name="bg" />
             ) : (
               <Rect x={0} y={0} width={width} height={height} fill={bgColor} name="bg" />
             )}
 
-            {/* GT Boxes */}
             {gtBoxes.map(box => (
-              <GTBoxShape
-                key={box.id}
-                box={box}
-                isSelected={selectedBoxId === box.id}
+              <GTBoxShape key={box.id} box={box} isSelected={selectedBoxId === box.id}
                 draggable={!isDrawMode}
                 onSelect={() => { if (!isDrawMode) onSelectBox(box.id); }}
                 onDragEnd={makeDragEnd(box.id)}
                 onTransformEnd={makeTransformEnd}
+                classes={classes}
               />
             ))}
 
-            {/* Predict Boxes */}
             {predictBoxes.map(box => (
-              <PredictBoxShape
-                key={box.id}
-                box={box}
-                isSelected={selectedBoxId === box.id}
-                isTP={tpIds.has(box.id)}
-                draggable={!isDrawMode}
+              <PredictBoxShape key={box.id} box={box} isSelected={selectedBoxId === box.id}
+                isTP={tpIds.has(box.id)} draggable={!isDrawMode}
                 onSelect={() => { if (!isDrawMode) onSelectBox(box.id); }}
                 onDragEnd={makeDragEnd(box.id)}
                 onTransformEnd={makeTransformEnd}
+                classes={classes}
               />
             ))}
 
-            {/* Drawing preview */}
             {preview && (
-              <Rect
-                x={preview.x} y={preview.y}
-                width={preview.width} height={preview.height}
+              <Rect x={preview.x} y={preview.y} width={preview.width} height={preview.height}
                 stroke={mode === 'gt-add' ? GT_STROKE : PRED_STROKE}
-                strokeWidth={2}
-                fill={mode === 'gt-add' ? GT_FILL : PRED_FILL}
-                dash={[6, 4]}
-                listening={false}
+                strokeWidth={2} fill={mode === 'gt-add' ? GT_FILL : PRED_FILL}
+                dash={[6, 4]} listening={false}
               />
             )}
 
-            <Transformer
-              ref={trRef}
-              rotateEnabled={false}
-              boundBoxFunc={(oldBox, newBox) => {
-                if (newBox.width < 10 || newBox.height < 10) return oldBox;
-                return newBox;
-              }}
+            <Transformer ref={trRef} rotateEnabled={false}
+              boundBoxFunc={(oldBox, newBox) => (newBox.width < 10 || newBox.height < 10 ? oldBox : newBox)}
             />
           </Layer>
         </Stage>
       </div>
-
-      <p className="text-xs text-gray-400">
-        {isDrawMode ? 'キャンバス上でドラッグしてボックスを描画' : 'ボックスをクリックで選択 / ドラッグで移動 / Delete で削除'}
-      </p>
     </div>
   );
 }
 
-/* ----- sub-components ----- */
+/* ---- Label badge (outside the box, top-left) ---- */
+function BoxLabel({ x, y, text, color }: { x: number; y: number; text: string; color: string }) {
+  const fs = 10; const pad = 3;
+  const w = text.length * 6.2 + pad * 2;
+  const h = fs + pad * 2;
+  const ly = y - h - 2;
+  const ry = ly < 0 ? y + 2 : ly;
+  return (
+    <>
+      <Rect x={x} y={ry} width={w} height={h} fill={color} opacity={0.88} cornerRadius={2} listening={false} />
+      <Text x={x + pad} y={ry + pad} text={text} fontSize={fs} fill="white" fontStyle="bold" listening={false} />
+    </>
+  );
+}
 
 type MakeTransformEnd = (id: string, ref: React.RefObject<Konva.Rect | null>) => () => void;
 
@@ -260,67 +267,45 @@ interface BoxShapeProps {
   onSelect: () => void;
   onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => void;
   onTransformEnd: MakeTransformEnd;
+  classes: ClassDef[];
 }
 
-function GTBoxShape({ box, isSelected, draggable, onSelect, onDragEnd, onTransformEnd }: BoxShapeProps) {
+function GTBoxShape({ box, isSelected, draggable, onSelect, onDragEnd, onTransformEnd, classes }: BoxShapeProps) {
   const ref = useRef<Konva.Rect>(null);
+  const cls = classes.find(c => c.id === box.classId);
+  const stroke = isSelected ? SEL_STROKE : (cls?.color ?? GT_STROKE);
+  const labelText = `GT ${box.label}`;
   return (
     <>
-      <Rect
-        ref={ref}
-        id={box.id}
-        x={box.x} y={box.y} width={box.width} height={box.height}
-        stroke={isSelected ? SEL_STROKE : GT_STROKE}
-        strokeWidth={isSelected ? 3 : 2}
-        fill={GT_FILL}
-        draggable={draggable}
-        onClick={onSelect}
-        onTap={onSelect}
-        onDragEnd={onDragEnd}
-        onTransformEnd={onTransformEnd(box.id, ref)}
+      <Rect ref={ref} id={box.id} x={box.x} y={box.y} width={box.width} height={box.height}
+        stroke={stroke} strokeWidth={isSelected ? 3 : 2} fill={GT_FILL}
+        draggable={draggable} onClick={onSelect} onTap={onSelect}
+        onDragEnd={onDragEnd} onTransformEnd={onTransformEnd(box.id, ref)}
       />
-      <Text
-        x={box.x + 4} y={box.y + 4}
-        text={`GT: ${box.label}`}
-        fontSize={11} fill={GT_STROKE}
-        listening={false}
-      />
+      <BoxLabel x={box.x} y={box.y} text={labelText} color={stroke} />
     </>
   );
 }
 
-interface PredictBoxShapeProps extends BoxShapeProps {
-  isTP: boolean;
-}
+interface PredictBoxShapeProps extends BoxShapeProps { isTP: boolean; }
 
-function PredictBoxShape({ box, isSelected, isTP, draggable, onSelect, onDragEnd, onTransformEnd }: PredictBoxShapeProps) {
+function PredictBoxShape({ box, isSelected, isTP, draggable, onSelect, onDragEnd, onTransformEnd, classes }: PredictBoxShapeProps) {
   const ref = useRef<Konva.Rect>(null);
-  const stroke = isSelected ? SEL_STROKE : (isTP ? TP_STROKE : PRED_STROKE);
+  const cls = classes.find(c => c.id === box.classId);
+  const baseColor = isTP ? TP_STROKE : PRED_STROKE;
+  const stroke = isSelected ? SEL_STROKE : (cls ? (isTP ? TP_STROKE : cls.color) : baseColor);
   const fill = isTP ? TP_FILL : PRED_FILL;
   const conf = (box.confidence ?? 1).toFixed(2);
   const status = isTP ? 'TP' : 'FP';
-
+  const labelText = `${status} ${box.label} ${conf}`;
   return (
     <>
-      <Rect
-        ref={ref}
-        id={box.id}
-        x={box.x} y={box.y} width={box.width} height={box.height}
-        stroke={stroke}
-        strokeWidth={isSelected ? 3 : 2}
-        fill={fill}
-        draggable={draggable}
-        onClick={onSelect}
-        onTap={onSelect}
-        onDragEnd={onDragEnd}
-        onTransformEnd={onTransformEnd(box.id, ref)}
+      <Rect ref={ref} id={box.id} x={box.x} y={box.y} width={box.width} height={box.height}
+        stroke={stroke} strokeWidth={isSelected ? 3 : 2} fill={fill}
+        draggable={draggable} onClick={onSelect} onTap={onSelect}
+        onDragEnd={onDragEnd} onTransformEnd={onTransformEnd(box.id, ref)}
       />
-      <Text
-        x={box.x + 4} y={box.y + 4}
-        text={`${status} ${conf}`}
-        fontSize={11} fill={stroke}
-        listening={false}
-      />
+      <BoxLabel x={box.x} y={box.y} text={labelText} color={stroke} />
     </>
   );
 }
