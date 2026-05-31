@@ -312,6 +312,7 @@ export default function Canvas({
 }
 
 function BoxLabel({ x, y, text, color }: { x: number; y: number; text: string; color: string }) {
+  if (!text) return null;
   const fs = 10; const pad = 3;
   const w = text.length * 6.2 + pad * 2;
   const h = fs + pad * 2;
@@ -341,7 +342,12 @@ function buildGTLabel(box: BoundingBox, classes: ClassDef[], ld: LabelDisplaySet
   const info: string[] = [];
   if (ld.showClassId && cls !== undefined) info.push(`#${cls.classId}`);
   if (ld.showName) info.push(box.label || '未設定');
-  return info.length > 0 ? `GT ${info.join(' ')}` : 'GT';
+  
+  if (ld.showType) {
+    return info.length > 0 ? `GT ${info.join(' ')}` : 'GT';
+  } else {
+    return info.join(' ');
+  }
 }
 
 function buildPredLabel(box: BoundingBox, classes: ClassDef[], ld: LabelDisplaySettings, isTP: boolean): string {
@@ -351,7 +357,12 @@ function buildPredLabel(box: BoundingBox, classes: ClassDef[], ld: LabelDisplayS
   if (ld.showClassId && cls !== undefined) info.push(`#${cls.classId}`);
   if (ld.showName) info.push(box.label || '未設定');
   if (ld.showConfidence) info.push((box.confidence ?? 1).toFixed(2));
-  return info.length > 0 ? `${prefix} ${info.join(' ')}` : prefix;
+  
+  if (ld.showType) {
+    return info.length > 0 ? `${prefix} ${info.join(' ')}` : prefix;
+  } else {
+    return info.join(' ');
+  }
 }
 
 function GTBoxShape({ box, isSelected, draggable, onSelect, onDragEnd, onTransformEnd, classes, labelDisplay }: BoxShapeProps) {

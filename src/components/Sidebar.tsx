@@ -187,6 +187,7 @@ export default function Sidebar({
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">ラベル表示</h3>
             <div className="flex gap-3 flex-wrap">
               {([
+                { key: 'showType',       label: 'タイプ(TP/GT/FP)' },
                 { key: 'showClassId',    label: 'クラスID' },
                 { key: 'showName',       label: 'クラス名' },
                 { key: 'showConfidence', label: '信頼度' },

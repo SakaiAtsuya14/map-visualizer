@@ -9,6 +9,7 @@ export interface LabelDisplaySettings {
   showClassId: boolean;
   showName: boolean;
   showConfidence: boolean;
+  showType: boolean;
 }
 
 export interface BoundingBox {

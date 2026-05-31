@@ -39,7 +39,7 @@ export default function App() {
   const [currentClassId, setCurrentClassId] = useState<string>('cls-1');
   const [currentConfidence, setCurrentConfidence] = useState(0.9);
   const [labelDisplay, setLabelDisplay] = useState<LabelDisplaySettings>({
-    showClassId: false, showName: true, showConfidence: true,
+    showClassId: false, showName: true, showConfidence: true, showType: true,
   });
   const [metrics, setMetrics] = useState<MetricsResult>(() => calculateMetrics([], []));
   const [prThreshold, setPrThreshold] = useState('0.50');
