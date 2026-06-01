@@ -47,6 +47,7 @@ export default function App() {
     showClassId: false, showName: true, showConfidence: true, showType: true,
   });
   const [metrics, setMetrics] = useState<MetricsResult>(() => calculateMetrics([], []));
+  const [evalMethod, setEvalMethod] = useState<'voc' | 'coco'>('voc');
   const [prThreshold, setPrThreshold] = useState('0.50');
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [windowSize, setWindowSize] = useState({ w: window.innerWidth, h: window.innerHeight });
@@ -271,8 +272,8 @@ export default function App() {
   );
 
   const handleCalculate = useCallback(() => {
-    setMetrics(calculateMetrics(gtBoxes, predictBoxes));
-  }, [gtBoxes, predictBoxes]);
+    setMetrics(calculateMetrics(gtBoxes, predictBoxes, evalMethod));
+  }, [gtBoxes, predictBoxes, evalMethod]);
 
   const prCurve = metrics.prCurveByThreshold[prThreshold] ?? metrics.prCurve;
   const prAP = metrics.mapByThreshold[prThreshold] ?? metrics.map50;
@@ -375,6 +376,7 @@ export default function App() {
                 <MetricsPanel 
                   metrics={metrics} onCalculate={handleCalculate}
                   iouThreshold={prThreshold} onIouThresholdChange={setPrThreshold}
+                  evalMethod={evalMethod} onEvalMethodChange={setEvalMethod}
                 />
 
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">

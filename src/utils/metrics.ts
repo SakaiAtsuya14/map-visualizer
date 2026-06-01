@@ -70,16 +70,27 @@ function computeAtThreshold(
   predictBoxes: BoundingBox[],
   iouMatrix: Map<string, Map<string, number>>,
   iouThreshold: number,
+  method: 'voc' | 'coco'
 ): ThresholdResult {
-  const gtLabels = [...new Set(gtBoxes.filter(b => b.label).map(b => b.label))];
+  const targetClasses = method === 'voc' 
+    ? [...new Set(gtBoxes.filter(b => b.label).map(b => b.label))]
+    : [...new Set([...gtBoxes, ...predictBoxes].filter(b => b.label).map(b => b.label))];
+
   const classAPs: number[] = [];
   let totalTP = 0, totalFP = 0, totalFN = 0;
   const allPRPoints: PRPoint[] = [];
 
-  for (const label of gtLabels) {
+  for (const label of targetClasses) {
     const classGTs = gtBoxes.filter(b => b.label === label);
     const classPreds = [...predictBoxes.filter(b => b.label === label)]
       .sort((a, b) => (b.confidence ?? 1) - (a.confidence ?? 1));
+
+    if (classGTs.length === 0) {
+      // This happens in COCO mode when there are predictions but no GT for a class
+      classAPs.push(0);
+      totalFP += classPreds.length;
+      continue;
+    }
 
     const matchedGTs = new Set<string>();
     const tpFlags: boolean[] = [];
@@ -103,15 +114,15 @@ function computeAtThreshold(
       classPR.push({ recall: cumTP / classGTs.length, precision: cumTP / (cumTP + cumFP) });
     }
 
-    classAPs.push(computeAP(classPR));
+    classAPs.push(computeAP(classPR, method));
     totalTP += tpFlags.filter(Boolean).length;
     totalFP += tpFlags.filter(f => !f).length;
     totalFN += classGTs.length - matchedGTs.size;
     allPRPoints.push(...classPR);
   }
 
-  const labelsWithGT = new Set(gtLabels);
-  totalFP += predictBoxes.filter(b => !b.label || !labelsWithGT.has(b.label)).length;
+  const evaluatedLabels = new Set(targetClasses);
+  totalFP += predictBoxes.filter(b => !b.label || !evaluatedLabels.has(b.label)).length;
 
   const mAP = classAPs.length > 0
     ? classAPs.reduce((a, b) => a + b, 0) / classAPs.length
@@ -126,6 +137,7 @@ function computeAtThreshold(
 export function calculateMetrics(
   gtBoxes: BoundingBox[],
   predictBoxes: BoundingBox[],
+  method: 'voc' | 'coco' = 'voc'
 ): MetricsResult {
   const iouMatrix = buildIouMatrix(gtBoxes, predictBoxes);
   const emptyThresholds = Object.fromEntries(EVAL_THRESHOLDS.map(t => [t.toFixed(2), 0]));
@@ -158,7 +170,7 @@ export function calculateMetrics(
   let at50: ThresholdResult | null = null;
 
   for (const t of EVAL_THRESHOLDS) {
-    const res = computeAtThreshold(gtBoxes, predictBoxes, iouMatrix, t);
+    const res = computeAtThreshold(gtBoxes, predictBoxes, iouMatrix, t, method);
     const key = t.toFixed(2);
     mapByThreshold[key] = res.mAP;
     prCurveByThreshold[key] = res.prCurve;
@@ -193,8 +205,21 @@ export function calculateMetrics(
   };
 }
 
-function computeAP(prCurve: PRPoint[]): number {
+function computeAP(prCurve: PRPoint[], method: 'voc' | 'coco'): number {
   if (prCurve.length === 0) return 0;
+  
+  if (method === 'coco') {
+    let ap = 0;
+    for (let i = 0; i <= 100; i++) {
+      const t = i / 100.0;
+      const validP = prCurve.filter(p => p.recall >= t);
+      if (validP.length > 0) {
+        ap += Math.max(...validP.map(p => p.precision));
+      }
+    }
+    return ap / 101.0;
+  }
+  
   const recalls = [0, ...prCurve.map(p => p.recall)];
   const precisions = [0, ...prCurve.map(p => p.precision)];
   for (let i = precisions.length - 2; i >= 0; i--) {

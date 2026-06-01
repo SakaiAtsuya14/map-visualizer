@@ -5,9 +5,11 @@ interface Props {
   onCalculate: () => void;
   iouThreshold: string;
   onIouThresholdChange: (threshold: string) => void;
+  evalMethod: 'voc' | 'coco';
+  onEvalMethodChange: (method: 'voc' | 'coco') => void;
 }
 
-export default function MetricsPanel({ metrics, onCalculate, iouThreshold, onIouThresholdChange }: Props) {
+export default function MetricsPanel({ metrics, onCalculate, iouThreshold, onIouThresholdChange, evalMethod, onEvalMethodChange }: Props) {
   const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
 
   // Get threshold-specific metrics
@@ -21,10 +23,21 @@ export default function MetricsPanel({ metrics, onCalculate, iouThreshold, onIou
     <section className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">評価指標 (Metrics)</h3>
-        <button onClick={onCalculate}
-          className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded hover:bg-indigo-700 active:bg-indigo-800 transition font-semibold shadow-sm">
-          mAP を計算
-        </button>
+        <div className="flex gap-2">
+          <select 
+            value={evalMethod} 
+            onChange={e => onEvalMethodChange(e.target.value as 'voc' | 'coco')}
+            className="text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:border-indigo-400 bg-gray-50 cursor-pointer"
+            title="mAPの計算アルゴリズム (VOC=AUC, COCO=101点補間)"
+          >
+            <option value="voc">VOC (AUC)</option>
+            <option value="coco">COCO (101-point)</option>
+          </select>
+          <button onClick={onCalculate}
+            className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded hover:bg-indigo-700 active:bg-indigo-800 transition font-semibold shadow-sm">
+            mAP を計算
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mb-4">
