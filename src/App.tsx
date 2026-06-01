@@ -52,8 +52,9 @@ export default function App() {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [windowSize, setWindowSize] = useState({ w: window.innerWidth, h: window.innerHeight });
 
-  // History for Undo (Ctrl+Z)
+  // History for Undo (Ctrl+Z) and Redo (Ctrl+Shift+Z / Cmd+Shift+Z)
   const historyRef = useRef<{ gt: BoundingBox[], predict: BoundingBox[] }[]>([]);
+  const redoHistoryRef = useRef<{ gt: BoundingBox[], predict: BoundingBox[] }[]>([]);
   const currentBoxesRef = useRef({ gt: gtBoxes, predict: predictBoxes });
   useEffect(() => {
     currentBoxesRef.current = { gt: gtBoxes, predict: predictBoxes };
@@ -61,6 +62,7 @@ export default function App() {
 
   const saveHistory = useCallback(() => {
     historyRef.current = [...historyRef.current, currentBoxesRef.current].slice(-50);
+    redoHistoryRef.current = [];
   }, []);
 
   const handleUpdateCanvasSize = useCallback((newW: number, newH: number) => {
@@ -92,9 +94,24 @@ export default function App() {
     if (hist.length > 0) {
       const last = hist[hist.length - 1];
       historyRef.current = hist.slice(0, -1);
+      redoHistoryRef.current = [...redoHistoryRef.current, currentBoxesRef.current].slice(-50);
       setGtBoxes(last.gt);
       setPredictBoxes(last.predict);
       if (selectedBoxId && !last.gt.find(b => b.id === selectedBoxId) && !last.predict.find(b => b.id === selectedBoxId)) {
+        setSelectedBoxId(null);
+      }
+    }
+  }, [selectedBoxId]);
+
+  const handleRedo = useCallback(() => {
+    const redoHist = redoHistoryRef.current;
+    if (redoHist.length > 0) {
+      const next = redoHist[redoHist.length - 1];
+      redoHistoryRef.current = redoHist.slice(0, -1);
+      historyRef.current = [...historyRef.current, currentBoxesRef.current].slice(-50);
+      setGtBoxes(next.gt);
+      setPredictBoxes(next.predict);
+      if (selectedBoxId && !next.gt.find(b => b.id === selectedBoxId) && !next.predict.find(b => b.id === selectedBoxId)) {
         setSelectedBoxId(null);
       }
     }
@@ -106,12 +123,16 @@ export default function App() {
         const t = e.target as HTMLElement;
         if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return;
         e.preventDefault();
-        handleUndo();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo]);
+  }, [handleUndo, handleRedo]);
 
   useEffect(() => {
     if (!isFullScreen) return;
