@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import Header from './components/Header';
 import Canvas from './components/Canvas';
@@ -43,6 +43,52 @@ export default function App() {
   });
   const [metrics, setMetrics] = useState<MetricsResult>(() => calculateMetrics([], []));
   const [prThreshold, setPrThreshold] = useState('0.50');
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [windowSize, setWindowSize] = useState({ w: window.innerWidth, h: window.innerHeight });
+
+  // History for Undo (Ctrl+Z)
+  const historyRef = useRef<{ gt: BoundingBox[], predict: BoundingBox[] }[]>([]);
+  const currentBoxesRef = useRef({ gt: gtBoxes, predict: predictBoxes });
+  useEffect(() => {
+    currentBoxesRef.current = { gt: gtBoxes, predict: predictBoxes };
+  }, [gtBoxes, predictBoxes]);
+
+  const saveHistory = useCallback(() => {
+    historyRef.current = [...historyRef.current, currentBoxesRef.current].slice(-50);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    const hist = historyRef.current;
+    if (hist.length > 0) {
+      const last = hist[hist.length - 1];
+      historyRef.current = hist.slice(0, -1);
+      setGtBoxes(last.gt);
+      setPredictBoxes(last.predict);
+      if (selectedBoxId && !last.gt.find(b => b.id === selectedBoxId) && !last.predict.find(b => b.id === selectedBoxId)) {
+        setSelectedBoxId(null);
+      }
+    }
+  }, [selectedBoxId]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        const t = e.target as HTMLElement;
+        if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return;
+        e.preventDefault();
+        handleUndo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo]);
+
+  useEffect(() => {
+    if (!isFullScreen) return;
+    const handleResize = () => setWindowSize({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isFullScreen]);
 
   const handleAddClass = useCallback((classId: number, name: string) => {
     const id = uuidv4();
@@ -51,6 +97,7 @@ export default function App() {
   }, [classes.length]);
 
   const handleUpdateClass = useCallback((id: string, updates: Partial<Pick<ClassDef, 'classId' | 'name' | 'color'>>) => {
+    if (updates.name !== undefined) saveHistory();
     setClasses(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
     if (updates.name !== undefined) {
       const newLabel = updates.name;
@@ -58,9 +105,10 @@ export default function App() {
       setGtBoxes(prev => prev.map(syncLabel));
       setPredictBoxes(prev => prev.map(syncLabel));
     }
-  }, []);
+  }, [saveHistory]);
 
   const handleDeleteClass = useCallback((id: string) => {
+    saveHistory();
     setClasses(prev => prev.filter(c => c.id !== id));
     if (currentClassId === id) setCurrentClassId('');
     const clearClass = (b: BoundingBox) =>
@@ -87,6 +135,7 @@ export default function App() {
   }, []);
 
   const handleUploadBoxes = useCallback(async (file: File, type: 'gt' | 'predict') => {
+    saveHistory();
     const text = await file.text();
     const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
     const scaleX = bgImageSize ? canvasW / bgImageSize.w : 1;
@@ -141,9 +190,10 @@ export default function App() {
     
     setGtBoxes(type === 'gt' ? updateBoxes(newBoxes) : updateBoxes(nextGt));
     setPredictBoxes(type === 'predict' ? updateBoxes(newBoxes) : updateBoxes(nextPredict));
-  }, [bgImageSize, gtBoxes, predictBoxes, currentClassId, canvasW, canvasH]);
+  }, [bgImageSize, gtBoxes, predictBoxes, currentClassId, canvasW, canvasH, saveHistory]);
 
   const handleAddBox = useCallback((geom: { x: number; y: number; width: number; height: number; type: 'gt' | 'predict' }) => {
+    saveHistory();
     const cls = classes.find(c => c.id === currentClassId);
     const newBox: BoundingBox = {
       id: uuidv4(), ...geom,
@@ -154,23 +204,26 @@ export default function App() {
     if (geom.type === 'gt') setGtBoxes(prev => [...prev, newBox]);
     else setPredictBoxes(prev => [...prev, newBox]);
     setSelectedBoxId(newBox.id);
-  }, [classes, currentClassId, currentConfidence]);
+  }, [classes, currentClassId, currentConfidence, saveHistory]);
 
   const handleUpdateBox = useCallback((id: string, updates: Partial<BoundingBox>) => {
+    saveHistory();
     const enriched = updates.classId !== undefined
       ? { ...updates, label: classLabel(classes.find(c => c.id === updates.classId)) }
       : updates;
     setGtBoxes(prev => prev.map(b => b.id === id ? { ...b, ...enriched } : b));
     setPredictBoxes(prev => prev.map(b => b.id === id ? { ...b, ...enriched } : b));
-  }, [classes]);
+  }, [classes, saveHistory]);
 
   const handleDeleteBox = useCallback((id: string) => {
+    saveHistory();
     setGtBoxes(prev => prev.filter(b => b.id !== id));
     setPredictBoxes(prev => prev.filter(b => b.id !== id));
     if (selectedBoxId === id) setSelectedBoxId(null);
-  }, [selectedBoxId]);
+  }, [selectedBoxId, saveHistory]);
 
   const handleConvertBox = useCallback((id: string) => {
+    saveHistory();
     const gtBox = gtBoxes.find(b => b.id === id);
     if (gtBox) {
       setGtBoxes(prev => prev.filter(b => b.id !== id));
@@ -182,7 +235,7 @@ export default function App() {
       setPredictBoxes(prev => prev.filter(b => b.id !== id));
       setGtBoxes(prev => [...prev, { ...predBox, type: 'gt', confidence: undefined }]);
     }
-  }, [gtBoxes, predictBoxes, currentConfidence]);
+  }, [gtBoxes, predictBoxes, currentConfidence, saveHistory]);
 
   const liveIouMatrix = useMemo(
     () => buildIouMatrix(gtBoxes, predictBoxes),
@@ -223,25 +276,43 @@ export default function App() {
             <div className="flex flex-col gap-5">
               {/* Top Row: Canvas & Sidebar */}
               <div className="flex gap-5 items-start">
-                <div className="shrink-0" style={{ width: 912 }}>
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+                <div 
+                  className={isFullScreen ? "fixed inset-0 z-50 bg-gray-900/90 p-4 flex items-center justify-center backdrop-blur-sm" : "shrink-0"}
+                  style={!isFullScreen ? { width: 912 } : {}}
+                >
+                  <div 
+                    className={`bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-col ${isFullScreen ? "w-full h-full" : ""}`}
+                    style={isFullScreen ? { maxWidth: '100%', maxHeight: '100%' } : {}}
+                  >
                     <div className="flex items-center gap-2 mb-3">
                       <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">キャンバスサイズ:</span>
                       <input type="number" value={canvasW} onChange={e => setCanvasW(Number(e.target.value) || 1)} className="w-16 text-xs border border-gray-300 rounded px-1.5 py-1 text-center font-mono focus:border-indigo-400 outline-none" />
                       <span className="text-gray-400 text-xs">×</span>
                       <input type="number" value={canvasH} onChange={e => setCanvasH(Number(e.target.value) || 1)} className="w-16 text-xs border border-gray-300 rounded px-1.5 py-1 text-center font-mono focus:border-indigo-400 outline-none" />
+                      
+                      <button onClick={handleUndo} title="Ctrl+Z"
+                        className="ml-auto text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded hover:bg-gray-200 transition font-medium flex items-center gap-1">
+                        ↩ 戻す (Ctrl+Z)
+                      </button>
+                      <button onClick={() => setIsFullScreen(!isFullScreen)}
+                        className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded hover:bg-indigo-200 transition font-medium">
+                        {isFullScreen ? '✕ 画面を戻す' : '⛶ 全画面表示'}
+                      </button>
                     </div>
-                    <Canvas
-                      width={880} height={580}
-                      contentWidth={canvasW} contentHeight={canvasH}
-                      gtBoxes={gtBoxes} predictBoxes={predictBoxes}
+                    <div className={isFullScreen ? "flex-1 w-full" : ""}>
+                      <Canvas
+                        width={isFullScreen ? windowSize.w - 64 : 880} 
+                        height={isFullScreen ? windowSize.h - 120 : 580}
+                        contentWidth={canvasW} contentHeight={canvasH}
+                        gtBoxes={gtBoxes} predictBoxes={predictBoxes}
                       mode={mode} bgColor="#e8eaf6" bgImage={bgImage}
                       iouMatrix={liveIouMatrix}
                       selectedBoxId={selectedBoxId} onSelectBox={setSelectedBoxId}
                       onAddBox={handleAddBox} onUpdateBox={handleUpdateBox} onDeleteBox={handleDeleteBox}
-                      classes={classes}
-                      labelDisplay={labelDisplay}
-                    />
+                        classes={classes}
+                        labelDisplay={labelDisplay}
+                      />
+                    </div>
                   </div>
                 </div>
 
