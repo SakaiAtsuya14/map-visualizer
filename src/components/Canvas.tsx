@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Stage, Layer, Rect, Text, Transformer, Image as KonvaImage } from 'react-konva';
+import { Stage, Layer, Rect, Text, Transformer, Image as KonvaImage, Label, Tag, Group } from 'react-konva';
 import Konva from 'konva';
 import type { BoundingBox, AppMode, ClassDef, LabelDisplaySettings } from '../types';
 
@@ -50,6 +50,7 @@ export default function Canvas({
   const [bgImageEl, setBgImageEl] = useState<HTMLImageElement | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [shiftPressed, setShiftPressed] = useState(false);
+  const [stageScale, setStageScale] = useState(1);
   const [rightDragBox, setRightDragBox] = useState<{
     id: string; startCanvasX: number; startCanvasY: number; startBoxX: number; startBoxY: number;
   } | null>(null);
@@ -131,6 +132,7 @@ export default function Canvas({
     const newScale = Math.max(minScale, Math.min(10, oldScale * (1 + dir * 0.12)));
     stage.scale({ x: newScale, y: newScale });
     stage.position({ x: pos.x - pivot.x * newScale, y: pos.y - pivot.y * newScale });
+    setStageScale(newScale);
   }, [width, height, contentWidth, contentHeight]);
 
   const handleMouseDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -215,6 +217,7 @@ export default function Canvas({
     if (stage) {
       const scale = Math.min(width / contentWidth, height / contentHeight, 1);
       stage.scale({ x: scale, y: scale });
+      setStageScale(scale);
       const x = (width - contentWidth * scale) / 2;
       const y = (height - contentHeight * scale) / 2;
       stage.position({ x, y });
@@ -298,6 +301,7 @@ export default function Canvas({
                 onDragEnd={makeDragEnd(box.id)}
                 onTransformEnd={makeTransformEnd}
                 classes={classes} labelDisplay={labelDisplay}
+                stageScale={stageScale}
               />
             ))}
 
@@ -308,6 +312,7 @@ export default function Canvas({
                 onDragEnd={makeDragEnd(box.id)}
                 onTransformEnd={makeTransformEnd}
                 classes={classes} labelDisplay={labelDisplay}
+                stageScale={stageScale}
               />
             ))}
 
@@ -329,18 +334,22 @@ export default function Canvas({
   );
 }
 
-function BoxLabel({ x, y, text, color }: { x: number; y: number; text: string; color: string }) {
+function BoxLabel({ x, y, text, color, stageScale }: { x: number; y: number; text: string; color: string; stageScale: number }) {
   if (!text) return null;
-  const fs = 10; const pad = 3;
-  const w = text.length * 6.2 + pad * 2;
-  const h = fs + pad * 2;
-  const ly = y - h - 2;
-  const ry = ly < 0 ? y + 2 : ly;
+  const scale = 1 / stageScale;
+  const fontSize = 12;
+  const pad = 4;
+  const h = fontSize + pad * 2; // visual height (20px)
+  const visualH = h * scale;
+  
+  const ly = y - visualH - 2 * scale;
+  const ry = ly < 0 ? y + 2 * scale : ly;
+  
   return (
-    <>
-      <Rect x={x} y={ry} width={w} height={h} fill={color} opacity={0.88} cornerRadius={2} listening={false} />
-      <Text x={x + pad} y={ry + pad} text={text} fontSize={fs} fill="white" fontStyle="bold" listening={false} />
-    </>
+    <Label x={x} y={ry} scaleX={scale} scaleY={scale} listening={false}>
+      <Tag fill={color} opacity={0.88} cornerRadius={2} />
+      <Text text={text} fontSize={fontSize} fill="white" fontStyle="bold" padding={pad} />
+    </Label>
   );
 }
 
@@ -353,6 +362,7 @@ interface BoxShapeProps {
   onTransformEnd: MakeTransformEnd;
   classes: ClassDef[];
   labelDisplay: LabelDisplaySettings;
+  stageScale: number;
 }
 
 function buildGTLabel(box: BoundingBox, classes: ClassDef[], ld: LabelDisplaySettings): string {
@@ -383,7 +393,7 @@ function buildPredLabel(box: BoundingBox, classes: ClassDef[], ld: LabelDisplayS
   }
 }
 
-function GTBoxShape({ box, isSelected, draggable, onSelect, onDragEnd, onTransformEnd, classes, labelDisplay }: BoxShapeProps) {
+function GTBoxShape({ box, isSelected, draggable, onSelect, onDragEnd, onTransformEnd, classes, labelDisplay, stageScale }: BoxShapeProps) {
   const ref = useRef<Konva.Rect>(null);
   const cls = classes.find(c => c.id === box.classId);
   const stroke = isSelected ? SEL_STROKE : (cls?.color ?? GT_STROKE);
@@ -394,14 +404,14 @@ function GTBoxShape({ box, isSelected, draggable, onSelect, onDragEnd, onTransfo
         draggable={draggable} onClick={onSelect} onTap={onSelect}
         onDragEnd={onDragEnd} onTransformEnd={onTransformEnd(box.id, ref)}
       />
-      <BoxLabel x={box.x} y={box.y} text={buildGTLabel(box, classes, labelDisplay)} color={stroke} />
+      <BoxLabel x={box.x} y={box.y} text={buildGTLabel(box, classes, labelDisplay)} color={stroke} stageScale={stageScale} />
     </>
   );
 }
 
 interface PredictBoxShapeProps extends BoxShapeProps { isTP: boolean; }
 
-function PredictBoxShape({ box, isSelected, isTP, draggable, onSelect, onDragEnd, onTransformEnd, classes, labelDisplay }: PredictBoxShapeProps) {
+function PredictBoxShape({ box, isSelected, isTP, draggable, onSelect, onDragEnd, onTransformEnd, classes, labelDisplay, stageScale }: PredictBoxShapeProps) {
   const ref = useRef<Konva.Rect>(null);
   const cls = classes.find(c => c.id === box.classId);
   const stroke = isSelected ? SEL_STROKE : (isTP ? TP_STROKE : (cls?.color ?? PRED_STROKE));
@@ -413,7 +423,7 @@ function PredictBoxShape({ box, isSelected, isTP, draggable, onSelect, onDragEnd
         draggable={draggable} onClick={onSelect} onTap={onSelect}
         onDragEnd={onDragEnd} onTransformEnd={onTransformEnd(box.id, ref)}
       />
-      <BoxLabel x={box.x} y={box.y} text={buildPredLabel(box, classes, labelDisplay, isTP)} color={stroke} />
+      <BoxLabel x={box.x} y={box.y} text={buildPredLabel(box, classes, labelDisplay, isTP)} color={stroke} stageScale={stageScale} />
     </>
   );
 }
