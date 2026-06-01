@@ -122,10 +122,15 @@ export default function Canvas({
     const pos = stage.getPointerPosition()!;
     const pivot = { x: (pos.x - stage.x()) / oldScale, y: (pos.y - stage.y()) / oldScale };
     const dir = e.evt.deltaY < 0 ? 1 : -1;
-    const newScale = Math.max(0.2, Math.min(5, oldScale * (1 + dir * 0.12)));
+    
+    // Calculate the minimum scale to fit the entire content in the viewport (or 0.05 if it's super small)
+    const fitScale = Math.min(width / contentWidth, height / contentHeight);
+    const minScale = Math.min(0.05, fitScale * 0.8); // Allow zooming out slightly more than fitScale
+    
+    const newScale = Math.max(minScale, Math.min(10, oldScale * (1 + dir * 0.12)));
     stage.scale({ x: newScale, y: newScale });
     stage.position({ x: pos.x - pivot.x * newScale, y: pos.y - pivot.y * newScale });
-  }, []);
+  }, [width, height, contentWidth, contentHeight]);
 
   const handleMouseDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
     // Middle mouse → pan

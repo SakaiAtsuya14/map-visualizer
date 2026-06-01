@@ -223,7 +223,7 @@ export default function App() {
             <div className="flex flex-col gap-5">
               {/* Top Row: Canvas & Sidebar */}
               <div className="flex gap-5 items-start">
-                <div className="shrink-0" style={{ width: 880 }}>
+                <div className="shrink-0" style={{ width: 912 }}>
                   <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
                     <div className="flex items-center gap-2 mb-3">
                       <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">キャンバスサイズ:</span>
@@ -271,7 +271,7 @@ export default function App() {
               </div>
 
               {/* Bottom Sections: Full Width */}
-              <div className="flex flex-col gap-4" style={{ width: 880 + 20 + 288 }}>
+              <div className="flex flex-col gap-4" style={{ width: 912 + 20 + 288 }}>
                 <MetricsPanel 
                   metrics={metrics} onCalculate={handleCalculate}
                   iouThreshold={prThreshold} onIouThresholdChange={setPrThreshold}
