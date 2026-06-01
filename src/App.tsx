@@ -34,6 +34,11 @@ export default function App() {
   const [predictFileName, setPredictFileName] = useState<string | null>(null);
   const [canvasW, setCanvasW] = useState(880);
   const [canvasH, setCanvasH] = useState(580);
+  
+  const canvasSizeRef = useRef({ w: 880, h: 580 });
+  useEffect(() => {
+    canvasSizeRef.current = { w: canvasW, h: canvasH };
+  }, [canvasW, canvasH]);
   const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
   const [classes, setClasses] = useState<ClassDef[]>(DEFAULT_CLASSES);
   const [currentClassId, setCurrentClassId] = useState<string>('cls-1');
@@ -56,6 +61,30 @@ export default function App() {
   const saveHistory = useCallback(() => {
     historyRef.current = [...historyRef.current, currentBoxesRef.current].slice(-50);
   }, []);
+
+  const handleUpdateCanvasSize = useCallback((newW: number, newH: number) => {
+    const prevW = canvasSizeRef.current.w;
+    const prevH = canvasSizeRef.current.h;
+    if (prevW === newW && prevH === newH) return;
+
+    saveHistory();
+
+    const scaleX = newW / prevW;
+    const scaleY = newH / prevH;
+
+    const scaleBox = (b: BoundingBox) => ({
+      ...b,
+      x: b.x * scaleX,
+      y: b.y * scaleY,
+      width: b.width * scaleX,
+      height: b.height * scaleY
+    });
+
+    setGtBoxes(prev => prev.map(scaleBox));
+    setPredictBoxes(prev => prev.map(scaleBox));
+    setCanvasW(newW);
+    setCanvasH(newH);
+  }, [saveHistory]);
 
   const handleUndo = useCallback(() => {
     const hist = historyRef.current;
@@ -126,8 +155,7 @@ export default function App() {
       const img = new Image();
       img.onload = () => {
         setBgImageSize({ w: img.naturalWidth, h: img.naturalHeight });
-        setCanvasW(img.naturalWidth);
-        setCanvasH(img.naturalHeight);
+        handleUpdateCanvasSize(img.naturalWidth, img.naturalHeight);
       };
       img.src = dataUrl;
     };
@@ -286,9 +314,9 @@ export default function App() {
                   >
                     <div className="flex items-center gap-2 mb-3">
                       <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">キャンバスサイズ:</span>
-                      <input type="number" value={canvasW} onChange={e => setCanvasW(Number(e.target.value) || 1)} className="w-16 text-xs border border-gray-300 rounded px-1.5 py-1 text-center font-mono focus:border-indigo-400 outline-none" />
+                      <input type="number" value={canvasW} onChange={e => handleUpdateCanvasSize(Number(e.target.value) || 1, canvasH)} className="w-16 text-xs border border-gray-300 rounded px-1.5 py-1 text-center font-mono focus:border-indigo-400 outline-none" />
                       <span className="text-gray-400 text-xs">×</span>
-                      <input type="number" value={canvasH} onChange={e => setCanvasH(Number(e.target.value) || 1)} className="w-16 text-xs border border-gray-300 rounded px-1.5 py-1 text-center font-mono focus:border-indigo-400 outline-none" />
+                      <input type="number" value={canvasH} onChange={e => handleUpdateCanvasSize(canvasW, Number(e.target.value) || 1)} className="w-16 text-xs border border-gray-300 rounded px-1.5 py-1 text-center font-mono focus:border-indigo-400 outline-none" />
                       
                       <button onClick={handleUndo} title="Ctrl+Z"
                         className="ml-auto text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded hover:bg-gray-200 transition font-medium flex items-center gap-1">
