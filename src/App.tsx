@@ -234,8 +234,8 @@ export default function App() {
     setSelectedBoxId(newBox.id);
   }, [classes, currentClassId, currentConfidence, saveHistory]);
 
-  const handleUpdateBox = useCallback((id: string, updates: Partial<BoundingBox>) => {
-    saveHistory();
+  const handleUpdateBox = useCallback((id: string, updates: Partial<BoundingBox>, skipHistory = false) => {
+    if (!skipHistory) saveHistory();
     const enriched = updates.classId !== undefined
       ? { ...updates, label: classLabel(classes.find(c => c.id === updates.classId)) }
       : updates;
@@ -333,10 +333,11 @@ export default function App() {
                         height={isFullScreen ? windowSize.h - 120 : 580}
                         contentWidth={canvasW} contentHeight={canvasH}
                         gtBoxes={gtBoxes} predictBoxes={predictBoxes}
-                      mode={mode} bgColor="#e8eaf6" bgImage={bgImage}
-                      iouMatrix={liveIouMatrix}
-                      selectedBoxId={selectedBoxId} onSelectBox={setSelectedBoxId}
-                      onAddBox={handleAddBox} onUpdateBox={handleUpdateBox} onDeleteBox={handleDeleteBox}
+                        mode={mode} bgColor="#e8eaf6" bgImage={bgImage}
+                        iouMatrix={liveIouMatrix}
+                        selectedBoxId={selectedBoxId} onSelectBox={setSelectedBoxId}
+                        onAddBox={handleAddBox} onUpdateBox={handleUpdateBox} onDeleteBox={handleDeleteBox}
+                        onSaveHistory={saveHistory}
                         classes={classes}
                         labelDisplay={labelDisplay}
                       />

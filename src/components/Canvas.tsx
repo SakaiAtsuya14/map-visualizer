@@ -27,8 +27,9 @@ interface Props {
   selectedBoxId: string | null;
   onSelectBox: (id: string | null) => void;
   onAddBox: (geom: { x: number; y: number; width: number; height: number; type: 'gt' | 'predict' }) => void;
-  onUpdateBox: (id: string, updates: Partial<BoundingBox>) => void;
+  onUpdateBox: (id: string, updates: Partial<BoundingBox>, skipHistory?: boolean) => void;
   onDeleteBox: (id: string) => void;
+  onSaveHistory: () => void;
   classes: ClassDef[];
   labelDisplay: LabelDisplaySettings;
 }
@@ -39,7 +40,7 @@ interface DrawState {
 
 export default function Canvas({
   width, height, contentWidth, contentHeight, gtBoxes, predictBoxes, mode, bgColor, bgImage,
-  iouMatrix, selectedBoxId, onSelectBox, onAddBox, onUpdateBox, onDeleteBox, classes, labelDisplay,
+  iouMatrix, selectedBoxId, onSelectBox, onAddBox, onUpdateBox, onDeleteBox, onSaveHistory, classes, labelDisplay,
 }: Props) {
   const stageRef = useRef<Konva.Stage>(null);
   const trRef = useRef<Konva.Transformer>(null);
@@ -145,8 +146,9 @@ export default function Canvas({
       e.evt.preventDefault();
       if (isDrawMode) {
         const targetId = (e.target as Konva.Node).id();
-        const box = [...gtBoxes, ...predictBoxes].find(b => b.id === targetId);
+        const box = [...predictBoxes, ...gtBoxes].find(b => b.id === targetId);
         if (box) {
+          onSaveHistory();
           onSelectBox(box.id);
           const p = getCanvasPos();
           setRightDragBox({ id: box.id, startCanvasX: p.x, startCanvasY: p.y, startBoxX: box.x, startBoxY: box.y });
@@ -179,7 +181,7 @@ export default function Canvas({
       onUpdateBox(rightDragBox.id, {
         x: rightDragBox.startBoxX + (p.x - rightDragBox.startCanvasX),
         y: rightDragBox.startBoxY + (p.y - rightDragBox.startCanvasY),
-      });
+      }, true);
       return;
     }
     if (!drawState || !isDrawMode) return;
